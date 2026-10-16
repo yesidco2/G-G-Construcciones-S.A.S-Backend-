@@ -5,13 +5,12 @@ Este es el backend desarrollado en Java con Spring Boot para la empresa de ingen
 El backend sirve de API REST para un frontend desarrollado en React.
 
 ## Tecnologías Utilizadas
-- **Java 17** (o superior)
-- **Spring Boot 4.0.7 / 3.x**
+- **Java 17**
+- **Spring Boot 3.3.5**
 - **Maven**
 - **PostgreSQL** (Entorno de desarrollo/producción)
 - **H2 Database** (Entorno de pruebas/tests de integración)
 - **SpringDoc OpenAPI (Swagger UI)**
-- **JBcrypt** (Seguridad y hashing de códigos de acceso de proyectos)
 
 ---
 
@@ -22,12 +21,15 @@ El backend sirve de API REST para un frontend desarrollado en React.
    ```sql
    CREATE DATABASE gygdatabase;
    ```
-3. Configura tus credenciales locales en el archivo `src/main/resources/application.properties` (este archivo no debe subirse a GitHub ni compartirse públicamente).
-   - **Usuario**: ejemplo `postgres`
-   - **Contraseña**: usa tu contraseña local privada, nunca la subas al repositorio
-   - **Puerto**: `5432`
+3. Configura estas variables de entorno para conectar la base de datos:
+   - `DB_URL`: URL JDBC de PostgreSQL, por ejemplo `jdbc:postgresql://localhost:5432/gygdatabase`
+   - `DB_USER`: usuario de PostgreSQL
+   - `DB_PASSWORD`: contraseña de PostgreSQL
+   - `APP_CORS_ALLOWED_ORIGINS` (opcional): orígenes separados por comas. Por defecto permite `http://localhost:5173,http://localhost:3000`.
 
-> Nunca compartas ni publiques la contraseña real de tu base de datos. Si necesitas compartir la configuración, usa un archivo de ejemplo como `application.properties.example` sin secretos reales.
+   Para producción en GitHub Pages, agrega el origen del sitio, por ejemplo `https://<usuario>.github.io`, a `APP_CORS_ALLOWED_ORIGINS`.
+
+> No publiques credenciales de base de datos. `application.properties.example` documenta la configuración sin incluir secretos.
 
 ---
 
@@ -76,7 +78,7 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 | **GET** | `/api/servicios` | Retorna los servicios ofrecidos organizados por bloque (`CIVIL` o `SST`). |
 | **GET** | `/api/datos-legales` | Devuelve el NIT y la dirección física de la empresa. |
 | **GET** | `/api/proyectos` | Retorna el portafolio de proyectos. Opcionalmente filtrable por query param `?categoria=CIVIL` o `?categoria=SST`. |
-| **GET** | `/api/proyectos/seguimiento/{codigo}` | Busca un proyecto por su código de acceso único (hasheado). Si es válido, retorna el avance y fotos del proyecto. |
+| **GET** | `/api/obras/seguimiento/{codigo}` | Busca una obra por su código de acceso único (comparado en texto plano). Si es válido, retorna el avance y fotos del proyecto. |
 | **POST** | `/api/contacto` | Recibe y valida `{ nombre, empresa, correo, telefono, tipoServicio, mensaje }`. Guarda la solicitud en BD y retorna 201. |
 | **POST** | `/api/chat` | Recibe `{ pregunta }`, procesa una respuesta automática basada en palabras clave de normativas SST, la registra en base de datos y la retorna. |
 | **GET** | `/api/riesgos/labores` | Retorna la lista de actividades/labores críticas de seguridad laboral. |
@@ -84,10 +86,16 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 | **GET** | `/api/politicas-ambientales` | Devuelve la lista de políticas y compromisos de mitigación ambiental de la empresa. |
 
 ### Prueba de Seguimiento de Proyecto
-El proyecto viene precargado (`DataLoader`) con datos de prueba si detecta las tablas vacías.
-- **Código de acceso piloto para pruebas (texto plano):** `GYG-CIVIL-001`
-- Para probar el endpoint de seguimiento, consume: `GET /api/proyectos/seguimiento/GYG-CIVIL-001`
-- Esto buscará de forma segura (usando comparación hash por BCrypt) y retornará el avance y las fotos de seguimiento de la obra vial Corredor Sur.
+El `DataLoader` precarga obras y fotos si la tabla de obras está vacía. Códigos disponibles:
+
+| Obra | Código | Avance |
+|---|---|---:|
+| Viaducto Metropolitano | `GG-2026-00125` | 74% |
+| Centro Logístico Industrial | `GG-2026-00218` | 58% |
+| Subestación Energía Norte | `GG-2026-00307` | 100% |
+| Programa SST Corredor Sur | `GYG-CIVIL-001` | 40% |
+
+Ejemplo: `GET /api/obras/seguimiento/GYG-CIVIL-001`. El código de seguimiento se compara en texto plano.
 
 ---
 

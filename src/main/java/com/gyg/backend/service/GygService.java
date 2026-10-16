@@ -6,17 +6,13 @@ import com.gyg.backend.exception.TooManyRequestsException;
 import com.gyg.backend.model.*;
 import com.gyg.backend.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -24,8 +20,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class GygService {
 
-    private static final long CONTACT_COOLDOWN_SECONDS = 30 * 60;
-    private final Map<String, LocalDateTime> lastContactByEmail = new ConcurrentHashMap<>();
+    private static final long CONTACT_COOLDOWN_MINUTES = 30;
 
     @Autowired
     private ServicioRepository servicioRepository;
@@ -40,7 +35,10 @@ public class GygService {
     private ObraRepository obraRepository;
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
+    private SolicitudContactoRepository solicitudContactoRepository;
+
+    @Autowired
+    private LogChatRepository logChatRepository;
 
     @Autowired
     private ChatEngine chatEngine;
@@ -92,16 +90,13 @@ public class GygService {
 
         LocalDateTime now = LocalDateTime.now();
         String normalizedEmail = correo.toLowerCase(Locale.ROOT);
-        synchronized (lastContactByEmail) {
-            LocalDateTime lastContact = findLastContactByEmail(normalizedEmail);
-            if (lastContact == null) {
-                lastContact = lastContactByEmail.get(normalizedEmail);
-            }
-            if (lastContact != null && lastContact.plusSeconds(CONTACT_COOLDOWN_SECONDS).isAfter(now)) {
-                throw new TooManyRequestsException(
-                        "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos.");
-            }
-            lastContactByEmail.put(normalizedEmail, now);
+        LocalDateTime lastContact = solicitudContactoRepository
+                .findTopByCorreoOrderByFechaDesc(normalizedEmail)
+                .map(SolicitudContacto::getFecha)
+                .orElse(null);
+        if (lastContact != null && lastContact.plusMinutes(CONTACT_COOLDOWN_MINUTES).isAfter(now)) {
+            throw new TooManyRequestsException(
+                    "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos.");
         }
 
         String tipoServicio = request.getTipoServicio() == null || request.getTipoServicio().trim().isEmpty()
@@ -109,40 +104,18 @@ public class GygService {
                 : request.getTipoServicio().trim().toUpperCase(Locale.ROOT);
         String nivelRiesgoSst = mapTipoServicioToNivelRiesgo(tipoServicio);
 
-        LocalDateTime timestamp = now;
-        String recomendaciones = "nombre=" + nombre + "; empresa=" + (request.getEmpresa() == null ? "" : request.getEmpresa())
-                + "; telefono=" + (request.getTelefono() == null ? "" : request.getTelefono())
-            + "; correo=" + normalizedEmail
-                + "; tipoServicio=" + tipoServicio + "; mensaje=" + mensaje;
+        SolicitudContacto solicitud = new SolicitudContacto();
+        solicitud.setNombre(nombre);
+        solicitud.setEmpresa(request.getEmpresa());
+        solicitud.setCorreo(normalizedEmail);
+        solicitud.setTelefono(request.getTelefono());
+        solicitud.setTipoServicio(tipoServicio);
+        solicitud.setNivelRiesgoSst(nivelRiesgoSst);
+        solicitud.setMensaje(mensaje);
+        solicitud.setFecha(now);
 
-        jdbcTemplate.update(
-                "INSERT INTO cotizaciones (usuario_id, metros_cuadrados, nivel_riesgo_sst, subtotal, iva, total, recomendaciones_ia, fecha_cotizacion) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                null,
-                java.math.BigDecimal.ZERO,
-                nivelRiesgoSst,
-                java.math.BigDecimal.ZERO,
-                java.math.BigDecimal.ZERO,
-                java.math.BigDecimal.ZERO,
-                recomendaciones,
-                java.sql.Timestamp.valueOf(timestamp)
-        );
-
-        Long id = jdbcTemplate.queryForObject("SELECT MAX(id) FROM cotizaciones", Long.class);
-        return new ContactoResponse(id, nombre, correo, mensaje, timestamp);
-    }
-
-    private LocalDateTime findLastContactByEmail(String normalizedEmail) {
-        String pattern = "%correo=" + normalizedEmail + ";%";
-        return jdbcTemplate.query(
-                "SELECT MAX(fecha_cotizacion) FROM cotizaciones WHERE LOWER(recomendaciones_ia) LIKE LOWER(?)",
-                resultSet -> {
-                    if (!resultSet.next() || resultSet.getTimestamp(1) == null) {
-                        return null;
-                    }
-                    return resultSet.getTimestamp(1).toLocalDateTime();
-                },
-                pattern
-        );
+        SolicitudContacto savedSolicitud = solicitudContactoRepository.save(solicitud);
+        return new ContactoResponse(savedSolicitud.getId(), nombre, correo, mensaje, now);
     }
 
     // 5. POST /api/chat
@@ -156,13 +129,12 @@ public class GygService {
         String respuesta = chatEngine.responder(pregunta);
         LocalDateTime timestamp = LocalDateTime.now();
 
-        jdbcTemplate.update(
-                "INSERT INTO logs_chat_ia (session_id, pregunta_usuario, respuesta_ia, fecha_interaccion) VALUES (?, ?, ?, ?)",
-                UUID.randomUUID().toString(),
-                pregunta,
-                respuesta,
-                java.sql.Timestamp.valueOf(timestamp)
-        );
+        LogChat logChat = new LogChat();
+        logChat.setSessionId(UUID.randomUUID().toString());
+        logChat.setPregunta(pregunta);
+        logChat.setRespuesta(respuesta);
+        logChat.setFecha(timestamp);
+        logChatRepository.save(logChat);
 
         return new ChatResponse(pregunta, respuesta, timestamp);
     }
