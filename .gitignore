@@ -2,3 +2,7 @@ target/
 .idea/
 *.iml
 src/main/resources/application.properties
+run-dev.ps1
+secrets/
+firebase-sa.json
+*firebase-adminsdk*.json
