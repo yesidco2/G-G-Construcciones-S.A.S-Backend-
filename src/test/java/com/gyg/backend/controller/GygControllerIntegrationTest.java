@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.UUID;
 
@@ -29,6 +30,43 @@ class GygControllerIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Test
+    void shouldRequireAuthenticationForProfileAndAdminEndpoints() throws Exception {
+        mockMvc.perform(get("/api/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("No autorizado"))
+                .andExpect(jsonPath("$.message").isNotEmpty());
+
+        mockMvc.perform(get("/api/admin/usuarios"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+
+        mockMvc.perform(get("/api/admin/autorizados"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @WithMockUser(roles = "INGENIERO")
+    void shouldDenyIngenieroFromAuthorizationManagementEndpoints() throws Exception {
+        mockMvc.perform(get("/api/admin/autorizados"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/usuarios"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void shouldAllowAdminToListAuthorizationAndUsers() throws Exception {
+        mockMvc.perform(get("/api/admin/autorizados"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/usuarios"))
+                .andExpect(status().isOk());
+    }
 
     @Test
     void shouldCreateContactoAndRejectRepeatedEmail() throws Exception {
