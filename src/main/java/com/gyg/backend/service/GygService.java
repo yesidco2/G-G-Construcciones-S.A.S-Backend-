@@ -9,11 +9,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,6 +24,8 @@ import java.util.stream.Collectors;
 public class GygService {
 
     private static final long CONTACT_COOLDOWN_MINUTES = 30;
+    private static final Pattern CONTACT_LINK_PATTERN = Pattern.compile("(?i)(https?://|www\\.)");
+    private static final Pattern TRACKING_CODE_PATTERN = Pattern.compile("^[A-Za-z0-9-]{6,40}$");
 
     @Autowired
     private ServicioRepository servicioRepository;
@@ -74,18 +79,23 @@ public class GygService {
             throw new IllegalArgumentException("La solicitud de contacto no puede ser nula");
         }
 
-        String nombre = request.getNombre() == null ? "" : request.getNombre().trim();
-        String correo = request.getCorreo() == null ? "" : request.getCorreo().trim();
-        String mensaje = request.getMensaje() == null ? "" : request.getMensaje().trim();
+        String nombre = limpiarTexto(request.getNombre());
+        String correo = limpiarTexto(request.getCorreo());
+        String mensaje = limpiarTexto(request.getMensaje());
+        String empresa = limpiarTexto(request.getEmpresa());
+        String telefono = limpiarTexto(request.getTelefono());
 
-        if (nombre.isEmpty()) {
+        if (nombre == null || nombre.isEmpty()) {
             throw new IllegalArgumentException("El nombre es requerido");
         }
-        if (correo.isEmpty()) {
+        if (correo == null || correo.isEmpty()) {
             throw new IllegalArgumentException("El correo es requerido");
         }
-        if (mensaje.isEmpty()) {
+        if (mensaje == null || mensaje.isEmpty()) {
             throw new IllegalArgumentException("El mensaje es requerido");
+        }
+        if (contarEnlaces(mensaje) > 2) {
+            throw new IllegalArgumentException("El mensaje no puede contener mas de 2 enlaces");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -106,9 +116,9 @@ public class GygService {
 
         SolicitudContacto solicitud = new SolicitudContacto();
         solicitud.setNombre(nombre);
-        solicitud.setEmpresa(request.getEmpresa());
+        solicitud.setEmpresa(empresa);
         solicitud.setCorreo(normalizedEmail);
-        solicitud.setTelefono(request.getTelefono());
+        solicitud.setTelefono(telefono);
         solicitud.setTipoServicio(tipoServicio);
         solicitud.setNivelRiesgoSst(nivelRiesgoSst);
         solicitud.setMensaje(mensaje);
@@ -158,11 +168,11 @@ public class GygService {
 
     // 7. GET /api/obras/seguimiento/{codigo}
     public SeguimientoObraDTO getSeguimientoProyecto(String codigo) {
-        if (codigo == null || codigo.trim().isEmpty()) {
-            throw new IllegalArgumentException("El codigo de acceso no puede estar vacio");
+        if (codigo == null || !TRACKING_CODE_PATTERN.matcher(codigo).matches()) {
+            throw new ResourceNotFoundException("Codigo de seguimiento invalido o no registrado");
         }
 
-        Obra obra = obraRepository.findByCodigoSeguimientoWithFotos(codigo.trim())
+        Obra obra = obraRepository.findByCodigoSeguimientoWithFotos(codigo)
                 .orElseThrow(() -> new ResourceNotFoundException("Codigo de seguimiento invalido o no registrado"));
 
         List<FotoObraDTO> fotosObra = obra.getFotos().stream()
@@ -219,6 +229,25 @@ public class GygService {
             return "ALTO";
         }
         return "BAJO";
+    }
+
+    private String limpiarTexto(String texto) {
+        if (texto == null) {
+            return null;
+        }
+        return Normalizer.normalize(texto, Normalizer.Form.NFC)
+                .replaceAll("[\\p{Cntrl}&&[^\\n]]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private int contarEnlaces(String texto) {
+        Matcher matcher = CONTACT_LINK_PATTERN.matcher(texto);
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
     }
 
     private String inferirCategoria(String nombreObra) {
