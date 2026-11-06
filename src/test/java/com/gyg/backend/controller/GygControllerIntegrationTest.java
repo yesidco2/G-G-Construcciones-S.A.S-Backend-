@@ -3,6 +3,7 @@ package com.gyg.backend.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gyg.backend.dto.ChatRequest;
 import com.gyg.backend.dto.ContactoRequest;
+import com.gyg.backend.repository.SolicitudContactoRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -30,6 +31,9 @@ class GygControllerIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private SolicitudContactoRepository solicitudContactoRepository;
 
     @Test
     void shouldRequireAuthenticationForProfileAndAdminEndpoints() throws Exception {
@@ -76,7 +80,7 @@ class GygControllerIntegrationTest {
                 "G&G Construcciones",
                 correo,
                 "3001234567",
-                "SST",
+                "Consultoría SST",
                 "Necesito una cotización urgente"
         );
 
@@ -105,6 +109,69 @@ class GygControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldRejectContactoWithInvalidFieldsAndTooManyLinks() throws Exception {
+        assertContactoBadRequest(new ContactoRequest(
+                "Ana 2", "Empresa", uniqueEmail(), "3001234567", "Obra Civil", "Necesito una cotizacion"));
+        assertContactoBadRequest(new ContactoRequest(
+                "Ana Gomez", "Empresa", uniqueEmail(), "3001234567", "Servicio ilegal", "Necesito una cotizacion"));
+        assertContactoBadRequest(new ContactoRequest(
+                "Ana Gomez", "Empresa", uniqueEmail(), "3001234567", "Obra Civil", "Corto"));
+        assertContactoBadRequest(new ContactoRequest(
+                "Ana Gomez", "Empresa", uniqueEmail(), "3001234567", "Obra Civil",
+                "Necesito una <b>cotizacion</b> de obra"));
+        assertContactoBadRequest(new ContactoRequest(
+                "Ana Gomez", "Empresa", uniqueEmail(), "30012ABC", "Obra Civil", "Necesito una cotizacion"));
+        assertContactoBadRequest(new ContactoRequest(
+                "Ana Gomez", "Empresa", "ana@localhost", "3001234567", "Obra Civil", "Necesito una cotizacion"));
+        assertContactoBadRequest(new ContactoRequest(
+                "Ana Gomez", "Empresa", uniqueEmail(), "3001234567", "Obra Civil",
+                "Cotizacion para https://uno.example http://dos.example www.tres.example"));
+    }
+
+    @Test
+    void shouldCreateContactoWithoutPhone() throws Exception {
+        ContactoRequest request = new ContactoRequest(
+                "Ana Gomez", "G&G Construcciones", uniqueEmail(), null,
+                "Consultoría SST", "Necesito asesoría en seguridad");
+
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber());
+    }
+
+    @Test
+    void shouldReturnCreatedWithZeroIdForHoneypotWithoutSaving() throws Exception {
+        String correo = uniqueEmail();
+        ContactoRequest request = new ContactoRequest(
+                "Ana Gomez", "G&G Construcciones", correo, null,
+                "Consultoría SST", "Necesito asesoría en seguridad");
+        request.setSitioWeb("https://spam.example");
+
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(0));
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                solicitudContactoRepository.findTopByCorreoOrderByFechaDesc(correo).isEmpty());
+    }
+
+    @Test
+    void shouldReturnBadRequestForMalformedJson() throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.path").value("/api/contacto"));
     }
 
     @Test
@@ -146,6 +213,9 @@ class GygControllerIntegrationTest {
 
         mockMvc.perform(get("/api/obras/seguimiento/NO-EXISTE"))
                 .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/obras/seguimiento/ab"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -157,5 +227,22 @@ class GygControllerIntegrationTest {
         mockMvc.perform(get("/api/riesgos/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1));
+    }
+
+    @Test
+    void shouldRequireAuthenticationForOpenApiDocumentation() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private void assertContactoBadRequest(ContactoRequest request) throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    private String uniqueEmail() {
+        return "contact-" + UUID.randomUUID() + "@example.com";
     }
 }
