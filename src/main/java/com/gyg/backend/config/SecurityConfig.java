@@ -16,11 +16,13 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -35,13 +37,20 @@ public class SecurityConfig {
             HttpSecurity http,
             ObjectProvider<FirebaseAuth> firebaseAuthProvider,
             UsuarioService usuarioService,
-            ObjectMapper objectMapper) throws Exception {
+            ObjectMapper objectMapper,
+            @Value("${app.swagger.public:false}") boolean swaggerPublic) throws Exception {
         FirebaseTokenFilter firebaseTokenFilter =
                 new FirebaseTokenFilter(firebaseAuthProvider.getIfAvailable(), usuarioService);
 
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
+                .headers(headers -> headers
+                        .referrerPolicy(referrer -> referrer
+                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31536000)))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) ->
@@ -50,17 +59,26 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, exception) ->
                                 writeError(response, objectMapper, HttpStatus.FORBIDDEN,
                                         "Acceso denegado", "No tienes permisos para acceder a este recurso.")))
-                .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/error", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**")
-                        .permitAll()
-                        .requestMatchers("/api/auth/**").authenticated()
-                        .requestMatchers("/api/admin/autorizados/**", "/api/admin/usuarios/**")
-                        .hasRole("ADMIN")
-                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "INGENIERO")
-                        .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/contacto", "/api/chat").permitAll()
-                        .anyRequest().authenticated())
+                .authorizeHttpRequests(authorize -> {
+                    authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                            .requestMatchers("/error").permitAll();
+                    if (swaggerPublic) {
+                        authorize.requestMatchers(
+                                "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
+                                .permitAll();
+                    } else {
+                        authorize.requestMatchers(
+                                "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
+                                .authenticated();
+                    }
+                    authorize.requestMatchers("/api/auth/**").authenticated()
+                            .requestMatchers("/api/admin/autorizados/**", "/api/admin/usuarios/**")
+                            .hasRole("ADMIN")
+                            .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "INGENIERO")
+                            .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/api/contacto", "/api/chat").permitAll()
+                            .anyRequest().authenticated();
+                })
                 .addFilterBefore(firebaseTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable());
@@ -88,6 +106,7 @@ public class SecurityConfig {
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
         configuration.setAllowCredentials(false);
+        configuration.setMaxAge(Duration.ofSeconds(3600));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

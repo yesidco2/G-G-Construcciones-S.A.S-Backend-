@@ -2,11 +2,16 @@ package com.gyg.backend.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,6 +85,39 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(body, HttpStatus.TOO_MANY_REQUESTS);
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleUnreadableMessage(
+            HttpMessageNotReadableException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.BAD_REQUEST, "Bad Request", "El cuerpo de la solicitud no tiene un formato valido.", request);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.METHOD_NOT_ALLOWED, "Method Not Allowed", "El metodo HTTP no esta permitido.", request);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported Media Type",
+                "El tipo de contenido de la solicitud no esta soportado.", request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResourceFound(
+            NoResourceFoundException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.NOT_FOUND, "Not Found", "No se encontro el recurso solicitado.", request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGlobalException(Exception ex, WebRequest request) {
         logger.error("Error interno no controlado al procesar la solicitud", ex);
@@ -90,5 +128,21 @@ public class GlobalExceptionHandler {
         body.put("message", "Ocurrió un error interno en el servidor");
         body.put("path", request.getDescription(false).replace("uri=", ""));
         return new ResponseEntity<>(body, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    private ResponseEntity<Map<String, Object>> createErrorResponse(
+            HttpStatus status,
+            String error,
+            String message,
+            WebRequest request) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", status.value());
+        body.put("error", error);
+        body.put("message", message);
+        body.put("path", request instanceof ServletWebRequest servletWebRequest
+                ? servletWebRequest.getRequest().getRequestURI()
+                : request.getDescription(false).replace("uri=", ""));
+        return new ResponseEntity<>(body, status);
     }
 }

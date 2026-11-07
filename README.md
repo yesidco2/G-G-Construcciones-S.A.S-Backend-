@@ -29,6 +29,8 @@ El backend sirve de API REST para un frontend desarrollado en React.
 
    Para producción en GitHub Pages, agrega el origen del sitio, por ejemplo `https://<usuario>.github.io`, a `APP_CORS_ALLOWED_ORIGINS`.
 
+4. Para ejecutar con Firebase habilitado, descarga el archivo JSON de credenciales de la cuenta de servicio desde Firebase Console. No lo agregues al repositorio. La ruta del archivo y el ID del proyecto deben estar configurados en el entorno de ejecución.
+
 > No publiques credenciales de base de datos. `application.properties.example` documenta la configuración sin incluir secretos.
 
 ---
@@ -36,13 +38,20 @@ El backend sirve de API REST para un frontend desarrollado en React.
 ## Instrucciones para Ejecución
 
 ### En Windows:
-Ejecuta el siguiente comando en la terminal desde la raíz del proyecto backend (`G&G_Backend/`):
+Desde PowerShell, ejecuta el script de desarrollo en la raíz del proyecto:
+```powershell
+.\run-dev.ps1
+```
+
+Antes de usarlo, revisa `run-dev.ps1` y ajusta `FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`, `APP_ADMIN_EMAILS`, `DB_URL` y `DB_USER` a tu entorno. El script comprueba que exista el archivo de credenciales de Firebase y solicita la contraseña de PostgreSQL al ejecutarse; no la guarda en el archivo. La base de datos indicada en `DB_URL` debe existir.
+
+Como alternativa, puedes iniciar Spring Boot directamente con el wrapper Maven, siempre que hayas configurado las variables de entorno requeridas (`DB_URL`, `DB_USER`, `DB_PASSWORD` y las de Firebase cuando corresponda):
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
 ### En Linux/macOS:
-Concede permisos de ejecución al script `mvnw` y ejecútalo:
+Configura las variables de entorno requeridas (`DB_URL`, `DB_USER`, `DB_PASSWORD` y las de Firebase cuando corresponda), concede permisos de ejecución al script `mvnw` y ejecútalo desde la raíz del proyecto:
 ```bash
 chmod +x mvnw
 ./mvnw spring-boot:run
