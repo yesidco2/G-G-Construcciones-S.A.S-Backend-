@@ -18,6 +18,12 @@ public class FotoObra {
     @Column(nullable = false)
     private LocalDate fecha;
 
+    @Column(name = "storage_key")
+    private String storageKey;
+
+    @Column(name = "subido_por")
+    private String subidoPor;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "obra_id", nullable = false)
     private Obra obra;
@@ -58,6 +64,22 @@ public class FotoObra {
 
     public void setFecha(LocalDate fecha) {
         this.fecha = fecha;
+    }
+
+    public String getStorageKey() {
+        return storageKey;
+    }
+
+    public void setStorageKey(String storageKey) {
+        this.storageKey = storageKey;
+    }
+
+    public String getSubidoPor() {
+        return subidoPor;
+    }
+
+    public void setSubidoPor(String subidoPor) {
+        this.subidoPor = subidoPor;
     }
 
     public Obra getObra() {

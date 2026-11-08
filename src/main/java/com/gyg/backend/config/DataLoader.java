@@ -55,6 +55,7 @@ public class DataLoader implements CommandLineRunner {
             subestacion.addFoto(new FotoObra("https://images.unsplash.com/photo-1516937941344-00b4e0337589?auto=format&fit=crop&w=1200&q=80", LocalDate.of(2026, 5, 30)));
 
             Obra programaSst = new Obra("Programa SST Corredor Sur", "GYG-CIVIL-001", "EN_PROGRESO", 1L, 40);
+            programaSst.setCategoria("SST");
             programaSst.addFoto(new FotoObra("https://images.unsplash.com/photo-1503387762-592dea58ef23?auto=format&fit=crop&w=1200&q=80", LocalDate.of(2026, 1, 28)));
             programaSst.addFoto(new FotoObra("https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&w=1200&q=80", LocalDate.of(2026, 3, 25)));
             programaSst.addFoto(new FotoObra("https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=1200&q=80", LocalDate.of(2026, 6, 2)));

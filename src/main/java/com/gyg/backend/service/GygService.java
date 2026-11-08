@@ -158,7 +158,8 @@ public class GygService {
                 .map(obra -> new ProyectoDTO(
                         obra.getId(),
                         obra.getNombreObra(),
-                        inferirCategoria(obra.getNombreObra()),
+                        obra.getCategoria() == null || obra.getCategoria().isBlank()
+                                ? inferirCategoria(obra.getNombreObra()) : obra.getCategoria(),
                         construirDescripcion(obra.getNombreObra()),
                         construirMetricaDestacada(obra.getNombreObra()),
                         construirImagen(obra.getNombreObra())

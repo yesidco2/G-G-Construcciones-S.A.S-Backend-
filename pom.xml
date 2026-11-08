@@ -64,6 +64,11 @@
 			<artifactId>firebase-admin</artifactId>
 			<version>9.11.0</version>
 		</dependency>
+		<dependency>
+			<groupId>com.twelvemonkeys.imageio</groupId>
+			<artifactId>imageio-webp</artifactId>
+			<version>3.15.3</version>
+		</dependency>
 
 		<dependency>
 			<groupId>org.postgresql</groupId>

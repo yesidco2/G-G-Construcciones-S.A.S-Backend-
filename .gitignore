@@ -1,4 +1,5 @@
 target/
+/var/uploads/
 .idea/
 *.iml
 src/main/resources/application.properties

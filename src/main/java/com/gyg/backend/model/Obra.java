@@ -2,6 +2,7 @@ package com.gyg.backend.model;
 
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,8 +29,20 @@ public class Obra {
     @Column(name = "cliente_id", nullable = false)
     private Long clienteId;
 
+    @Column(name = "cliente", nullable = false)
+    private String cliente = "Cliente";
+
+    @Column(name = "categoria", nullable = false)
+    private String categoria = "CIVIL";
+
+    @Column(name = "eliminada_en")
+    private LocalDateTime eliminadaEn;
+
     @OneToMany(mappedBy = "obra", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<FotoObra> fotos = new ArrayList<>();
+
+    @OneToMany(mappedBy = "obra", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<HitoObra> hitos = new ArrayList<>();
 
     public Obra() {
     }
@@ -94,12 +107,53 @@ public class Obra {
         this.clienteId = clienteId;
     }
 
+    public String getCliente() {
+        return cliente;
+    }
+
+    public void setCliente(String cliente) {
+        this.cliente = cliente;
+    }
+
+    public String getCategoria() {
+        return categoria;
+    }
+
+    public void setCategoria(String categoria) {
+        this.categoria = categoria;
+    }
+
+    public LocalDateTime getEliminadaEn() {
+        return eliminadaEn;
+    }
+
+    public void setEliminadaEn(LocalDateTime eliminadaEn) {
+        this.eliminadaEn = eliminadaEn;
+    }
+
     public List<FotoObra> getFotos() {
         return fotos;
     }
 
     public void setFotos(List<FotoObra> fotos) {
         this.fotos = fotos;
+    }
+
+    public List<HitoObra> getHitos() {
+        return hitos;
+    }
+
+    public void setHitos(List<HitoObra> hitos) {
+        this.hitos = hitos;
+    }
+
+    public void addHito(HitoObra hito) {
+        hitos.add(hito);
+        hito.setObra(this);
+    }
+
+    public void clearHitos() {
+        hitos.clear();
     }
 
     public void addFoto(FotoObra foto) {
