@@ -5,15 +5,18 @@ import com.gyg.backend.dto.AutorizacionRequest;
 import com.gyg.backend.model.Usuario;
 import com.gyg.backend.service.AdministracionService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/autorizados")
+@Validated
 public class AdminAutorizadosController {
 
     private final AdministracionService administracionService;
@@ -37,7 +40,7 @@ public class AdminAutorizadosController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @AuthenticationPrincipal Usuario actor) {
         administracionService.eliminarAutorizacion(id, actor);
         return ResponseEntity.noContent().build();

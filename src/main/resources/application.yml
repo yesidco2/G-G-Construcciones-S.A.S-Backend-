@@ -3,11 +3,6 @@ spring:
     name: GYG_Backend
   profiles:
     default: prod
-server:
-  forward-headers-strategy: native
-  tomcat:
-    remoteip:
-      internal-proxies: "${APP_TRUSTED_PROXIES:(?!)}"
   datasource:
     url: ${DB_URL}
     username: ${DB_USER}
@@ -25,7 +20,17 @@ server:
     multipart:
       max-file-size: ${APP_MULTIPART_MAX_FILE_SIZE:5MB}
       max-request-size: ${APP_MULTIPART_MAX_REQUEST_SIZE:25MB}
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+server:
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: "${APP_TRUSTED_PROXIES:(?!)}"
 app:
+  http:
+    max-body-size: ${APP_MAX_REQUEST_BODY_SIZE:1MB}
   captcha:
     enabled: ${APP_CAPTCHA_ENABLED:true}
     provider: ${APP_CAPTCHA_PROVIDER:turnstile}

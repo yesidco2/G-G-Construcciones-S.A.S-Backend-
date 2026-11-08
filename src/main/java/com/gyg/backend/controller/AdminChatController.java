@@ -1,10 +1,10 @@
 package com.gyg.backend.controller;
 
 import com.gyg.backend.dto.ChatConsultaDTO;
+import com.gyg.backend.dto.ChatConsultasPageDTO;
 import com.gyg.backend.repository.LogChatRepository;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -25,12 +25,18 @@ public class AdminChatController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<ChatConsultaDTO>> listar(
+    public ResponseEntity<ChatConsultasPageDTO> listar(
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        Page<ChatConsultaDTO> result = logChatRepository
+        var result = logChatRepository
                 .findAllByOrderByFechaDesc(PageRequest.of(page, size))
                 .map(ChatConsultaDTO::from);
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(new ChatConsultasPageDTO(
+                result.getContent(),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.isLast()));
     }
 }

@@ -23,6 +23,7 @@ import java.util.concurrent.Future;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -115,7 +116,7 @@ class GygControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").isNumber());
+                .andExpect(jsonPath("$.id").value(0));
         var savedContact = solicitudContactoRepository.findTopByCorreoOrderByFechaDesc(correo)
                 .orElseThrow();
         org.junit.jupiter.api.Assertions.assertTrue(savedContact.isAceptaPolitica());
@@ -268,6 +269,99 @@ class GygControllerIntegrationTest {
                 .andExpect(jsonPath("$.error").value("Bad Request"))
                 .andExpect(jsonPath("$.message").isNotEmpty())
                 .andExpect(jsonPath("$.path").value("/api/contacto"));
+    }
+
+    @Test
+    void shouldRejectUnknownDtoProperties() throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"Ana Gomez\",\"empresa\":\"Empresa\","
+                                + "\"correo\":\"" + uniqueEmail() + "\",\"telefono\":\"\","
+                                + "\"tipoServicio\":\"Obra Civil\",\"mensaje\":\"Necesito cotizacion\","
+                                + "\"aceptaPolitica\":true,\"id\":123}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("El cuerpo de la solicitud no tiene un formato valido."));
+    }
+
+    @Test
+    void shouldRejectRequestBodiesAboveConfiguredLimit() throws Exception {
+        mockMvc.perform(post("/api/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new byte[1024 * 1024 + 1]))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.status").value(413))
+                .andExpect(jsonPath("$.message").value(
+                        "El cuerpo de la solicitud supera el tamaño permitido."));
+    }
+
+    @Test
+    void shouldSetRestrictiveSecurityHeadersOnApiResponses() throws Exception {
+        mockMvc.perform(get("/api/institucional").secure(true))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("Referrer-Policy", "no-referrer"))
+                .andExpect(header().exists("Strict-Transport-Security"))
+                .andExpect(header().string("Permissions-Policy",
+                        "camera=(), microphone=(), geolocation=()"))
+                .andExpect(header().string("Content-Security-Policy",
+                        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"));
+    }
+
+    @Test
+    void shouldAllowCaptchaHeaderInCorsPreflight() throws Exception {
+        mockMvc.perform(options("/api/contacto")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "X-Captcha-Token"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Headers",
+                        org.hamcrest.Matchers.containsString("X-Captcha-Token")))
+                .andExpect(header().string("Access-Control-Max-Age", "3600"));
+    }
+
+    @Test
+    void shouldValidateQueryAndPathParameters() throws Exception {
+        mockMvc.perform(get("/api/proyectos").param("categoria", "UNKNOWN"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("La solicitud contiene datos no válidos."));
+
+        mockMvc.perform(get("/api/riesgos/0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("La solicitud contiene datos no válidos."));
+    }
+
+    @Test
+    void shouldReturnGenericResponsesForUnsupportedRequests() throws Exception {
+        mockMvc.perform(get("/api/contacto"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.status").value(405))
+                .andExpect(jsonPath("$.message").value("El metodo HTTP no esta permitido."));
+
+        mockMvc.perform(post("/api/chat")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("pregunta"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.status").value(415))
+                .andExpect(jsonPath("$.message").value(
+                        "El tipo de contenido de la solicitud no esta soportado."));
+
+        mockMvc.perform(get("/api/recurso-inexistente"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value("No se encontro el recurso solicitado."));
+    }
+
+    @Test
+    void shouldReturnGenericMessagesForServiceErrors() throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"Ana Gomez\",\"empresa\":\"Empresa\","
+                                + "\"correo\":\"" + uniqueEmail() + "\",\"telefono\":\"\","
+                                + "\"tipoServicio\":\"Obra Civil\","
+                                + "\"mensaje\":\"https://uno.example https://dos.example www.tres.example\","
+                                + "\"aceptaPolitica\":true}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("La solicitud contiene datos no válidos."));
     }
 
     @Test

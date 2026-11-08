@@ -9,19 +9,22 @@ import com.gyg.backend.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api")
+@Validated
 @Tag(name = "G&G Construcciones API", description = "Servicios REST para el portal de G&G Construcciones (Ingenieria Civil y Consultoria SST)")
 public class GygController {
 
@@ -81,11 +84,10 @@ public class GygController {
         }
         if (request.getSitioWeb() != null && !request.getSitioWeb().isBlank()) {
             return ResponseEntity.status(HttpStatus.CREATED).body(
-                    new ContactoResponse(0L, request.getNombre(), request.getCorreo(), request.getMensaje(),
-                            LocalDateTime.now()));
+                    new ContactoResponse(0L));
         }
-        ContactoResponse response = gygService.crearContacto(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        gygService.crearContacto(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new ContactoResponse(0L));
     }
 
     @PostMapping("/chat")
@@ -101,7 +103,8 @@ public class GygController {
 
     @GetMapping("/proyectos")
     @Operation(summary = "Listar obras del portafolio con filtro opcional por categoria (CIVIL o SST)")
-    public ResponseEntity<List<ProyectoDTO>> getProyectos(@RequestParam(required = false) String categoria) {
+    public ResponseEntity<List<ProyectoDTO>> getProyectos(
+            @RequestParam(required = false) @Pattern(regexp = "CIVIL|SST") String categoria) {
         return ResponseEntity.ok(gygService.getProyectos(categoria));
     }
 
@@ -135,7 +138,7 @@ public class GygController {
     @GetMapping("/riesgos/{laborId}")
     @Operation(summary = "Obtener la matriz de riesgos y EPP recomendados para una labor especifica")
     public ResponseEntity<LaborDetalleDTO> getLaborDetalle(
-            @PathVariable("laborId") Long laborId) {
+            @PathVariable("laborId") @Positive Long laborId) {
         return ResponseEntity.ok(gygService.getLaborDetalle(laborId));
     }
 

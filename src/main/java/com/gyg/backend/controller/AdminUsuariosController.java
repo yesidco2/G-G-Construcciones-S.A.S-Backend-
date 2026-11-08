@@ -5,13 +5,16 @@ import com.gyg.backend.dto.UsuarioAdminDTO;
 import com.gyg.backend.model.Usuario;
 import com.gyg.backend.service.AdministracionService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/usuarios")
+@Validated
 public class AdminUsuariosController {
 
     private final AdministracionService administracionService;
@@ -27,7 +30,7 @@ public class AdminUsuariosController {
 
     @PatchMapping("/{id}")
     public UsuarioAdminDTO actualizar(
-            @PathVariable Long id,
+            @PathVariable @Positive Long id,
             @Valid @RequestBody ActualizarUsuarioRequest request,
             @AuthenticationPrincipal Usuario actor) {
         return administracionService.actualizarUsuario(id, request, actor);

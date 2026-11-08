@@ -87,7 +87,7 @@ public class GygService {
 
     // 4. POST /api/contacto
     @Transactional
-    public ContactoResponse crearContacto(ContactoRequest request) {
+    public void crearContacto(ContactoRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("La solicitud de contacto no puede ser nula");
         }
@@ -144,8 +144,7 @@ public class GygService {
         solicitud.setVersionPolitica(policyVersion);
         solicitud.setFechaConsentimiento(now);
 
-        SolicitudContacto savedSolicitud = solicitudContactoRepository.save(solicitud);
-        return new ContactoResponse(savedSolicitud.getId(), nombre, correo, mensaje, now);
+        solicitudContactoRepository.save(solicitud);
     }
 
     // 5. POST /api/chat

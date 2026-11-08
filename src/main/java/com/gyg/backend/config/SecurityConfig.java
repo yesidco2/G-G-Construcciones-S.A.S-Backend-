@@ -25,6 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -56,14 +57,22 @@ public class SecurityConfig {
                                 .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
-                                .maxAgeInSeconds(31536000)))
+                                .maxAgeInSeconds(31536000))
+                        .addHeaderWriter((request, response) -> {
+                            response.setHeader("Permissions-Policy",
+                                    "camera=(), microphone=(), geolocation=()");
+                            if (request.getRequestURI().startsWith("/api/")) {
+                                response.setHeader("Content-Security-Policy",
+                                        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+                            }
+                        }))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) ->
-                                writeError(response, objectMapper, HttpStatus.UNAUTHORIZED,
+                                writeError(request, response, objectMapper, HttpStatus.UNAUTHORIZED,
                                         "No autorizado", "Debes autenticarte para acceder a este recurso."))
                         .accessDeniedHandler((request, response, exception) ->
-                                writeError(response, objectMapper, HttpStatus.FORBIDDEN,
+                                writeError(request, response, objectMapper, HttpStatus.FORBIDDEN,
                                         "Acceso denegado", "No tienes permisos para acceder a este recurso.")))
                 .authorizeHttpRequests(authorize -> {
                     authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
@@ -117,7 +126,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Captcha-Token"));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(Duration.ofSeconds(3600));
 
@@ -127,6 +136,7 @@ public class SecurityConfig {
     }
 
     private static void writeError(
+            jakarta.servlet.http.HttpServletRequest request,
             HttpServletResponse response,
             ObjectMapper objectMapper,
             HttpStatus status,
@@ -137,9 +147,11 @@ public class SecurityConfig {
         response.setCharacterEncoding("UTF-8");
 
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
         body.put("status", status.value());
         body.put("error", error);
         body.put("message", message);
+        body.put("path", request.getRequestURI());
         objectMapper.writeValue(response.getOutputStream(), body);
     }
 }
