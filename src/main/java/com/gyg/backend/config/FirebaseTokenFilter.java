@@ -5,6 +5,7 @@ import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import com.gyg.backend.model.Usuario;
 import com.gyg.backend.service.UsuarioService;
+import com.gyg.backend.service.VerifiedSessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,6 +45,8 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
                     FirebaseToken token = firebaseAuth.verifyIdToken(idToken, true);
                     Usuario usuario = usuarioService.obtenerOCrear(token);
                     if (usuario.isActivo()) {
+                        request.setAttribute(
+                                VerifiedSessionService.FirebaseTokenFilterAttribute.NAME, token);
                         UsernamePasswordAuthenticationToken authentication =
                                 new UsernamePasswordAuthenticationToken(
                                         usuario,
@@ -55,8 +58,7 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
                     SecurityContextHolder.clearContext();
                 } catch (RuntimeException exception) {
                     logger.warn(
-                            "No se pudo resolver el usuario del token de Firebase; la solicitud continuará como anónima",
-                            exception);
+                            "No se pudo resolver el usuario del token de Firebase; la solicitud continuará como anónima");
                     SecurityContextHolder.clearContext();
                 }
             }

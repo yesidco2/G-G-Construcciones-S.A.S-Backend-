@@ -2,6 +2,7 @@ package com.gyg.backend.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.firebase.auth.FirebaseAuth;
+import com.gyg.backend.service.VerifiedSessionService;
 import com.gyg.backend.service.UsuarioService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.ObjectProvider;
@@ -38,10 +39,14 @@ public class SecurityConfig {
             HttpSecurity http,
             ObjectProvider<FirebaseAuth> firebaseAuthProvider,
             UsuarioService usuarioService,
+            VerifiedSessionService verifiedSessionService,
             ObjectMapper objectMapper,
+            @Value("${app.captcha.enabled:true}") boolean captchaEnabled,
             @Value("${app.swagger.public:false}") boolean swaggerPublic) throws Exception {
         FirebaseTokenFilter firebaseTokenFilter =
                 new FirebaseTokenFilter(firebaseAuthProvider.getIfAvailable(), usuarioService);
+        VerifiedSessionFilter verifiedSessionFilter =
+                new VerifiedSessionFilter(verifiedSessionService, objectMapper, captchaEnabled);
 
         http
                 .csrf(csrf -> csrf.disable())
@@ -72,7 +77,8 @@ public class SecurityConfig {
                                 "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
                                 .authenticated();
                     }
-                    authorize.requestMatchers("/api/auth/**").authenticated()
+                    authorize.requestMatchers("/api/auth/captcha/verify").permitAll()
+                            .requestMatchers("/api/auth/**").authenticated()
                             .requestMatchers("/api/admin/autorizados/**", "/api/admin/usuarios/**")
                             .hasRole("ADMIN")
                             .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "INGENIERO")
@@ -81,6 +87,7 @@ public class SecurityConfig {
                             .anyRequest().authenticated();
                 })
                 .addFilterBefore(firebaseTokenFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(verifiedSessionFilter, FirebaseTokenFilter.class)
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable());
 
