@@ -1,24 +1,31 @@
 package com.gyg.backend.exception;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.validation.FieldError;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import com.gyg.backend.service.CaptchaProviderUnavailableException;
+import com.gyg.backend.service.CaptchaService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.stream.Collectors;
+import jakarta.validation.ConstraintViolationException;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -27,24 +34,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<Map<String, Object>> handleConflict(ConflictException ex, WebRequest request) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", LocalDateTime.now());
-        body.put("status", HttpStatus.CONFLICT.value());
-        body.put("error", "Conflicto");
-        body.put("message", ex.getMessage());
-        body.put("path", request.getDescription(false).replace("uri=", ""));
-        return new ResponseEntity<>(body, HttpStatus.CONFLICT);
+        return createErrorResponse(
+                HttpStatus.CONFLICT, "Conflict", "La solicitud no se puede completar por un conflicto.", request);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleResourceNotFound(ResourceNotFoundException ex, WebRequest request) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", LocalDateTime.now());
-        body.put("status", HttpStatus.NOT_FOUND.value());
-        body.put("error", "Not Found");
-        body.put("message", ex.getMessage());
-        body.put("path", request.getDescription(false).replace("uri=", ""));
-        return new ResponseEntity<>(body, HttpStatus.NOT_FOUND);
+        return createErrorResponse(
+                HttpStatus.NOT_FOUND, "Not Found", "No se encontró el recurso solicitado.", request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -54,24 +51,28 @@ public class GlobalExceptionHandler {
         body.put("status", HttpStatus.BAD_REQUEST.value());
         body.put("error", "Bad Request");
         
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .map(FieldError::getDefaultMessage)
-                .collect(Collectors.joining(", "));
-        
-        body.put("message", "Error de validacion: " + message);
+        body.put("message", "La solicitud contiene datos no válidos.");
         body.put("path", request.getDescription(false).replace("uri=", ""));
         return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex, WebRequest request) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", LocalDateTime.now());
-        body.put("status", HttpStatus.BAD_REQUEST.value());
-        body.put("error", "Bad Request");
-        body.put("message", ex.getMessage());
-        body.put("path", request.getDescription(false).replace("uri=", ""));
-        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+        return createErrorResponse(
+                HttpStatus.BAD_REQUEST, "Bad Request", "La solicitud contiene datos no válidos.", request);
+    }
+
+    @ExceptionHandler({ConstraintViolationException.class, MethodArgumentTypeMismatchException.class,
+            MissingServletRequestParameterException.class})
+    public ResponseEntity<Map<String, Object>> handleInvalidParameter(Exception ex, WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.BAD_REQUEST, "Bad Request", "La solicitud contiene datos no válidos.", request);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex, WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.FORBIDDEN, "Forbidden", "No tienes permisos para acceder a este recurso.", request);
     }
 
     @ExceptionHandler(TooManyRequestsException.class)
@@ -82,7 +83,26 @@ public class GlobalExceptionHandler {
         body.put("error", "Too Many Requests");
         body.put("message", ex.getMessage());
         body.put("path", request.getDescription(false).replace("uri=", ""));
-        return new ResponseEntity<>(body, HttpStatus.TOO_MANY_REQUESTS);
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(ex.getRetryAfterSeconds()))
+                .body(body);
+    }
+
+    @ExceptionHandler(CaptchaService.InvalidCaptchaException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidCaptcha(
+            CaptchaService.InvalidCaptchaException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.BAD_REQUEST, "Bad Request", "La verificación CAPTCHA no fue válida.", request);
+    }
+
+    @ExceptionHandler(CaptchaProviderUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleCaptchaUnavailable(
+            CaptchaProviderUnavailableException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+                "No fue posible verificar CAPTCHA. Intenta nuevamente.", request);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -118,16 +138,29 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND, "Not Found", "No se encontro el recurso solicitado.", request);
     }
 
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleUploadTooLarge(
+            MaxUploadSizeExceededException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.PAYLOAD_TOO_LARGE, "Payload Too Large",
+                "El archivo supera el tamaño permitido.", request);
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidMultipart(
+            MultipartException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.BAD_REQUEST, "Bad Request", "El formulario de carga no es válido.", request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGlobalException(Exception ex, WebRequest request) {
-        logger.error("Error interno no controlado al procesar la solicitud", ex);
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", LocalDateTime.now());
-        body.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
-        body.put("error", "Internal Server Error");
-        body.put("message", "Ocurrió un error interno en el servidor");
-        body.put("path", request.getDescription(false).replace("uri=", ""));
-        return new ResponseEntity<>(body, HttpStatus.INTERNAL_SERVER_ERROR);
+        logger.error("Error interno no controlado al procesar la solicitud ({})", ex.getClass().getSimpleName());
+        return createErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error",
+                "Ocurrió un error interno en el servidor.", request);
     }
 
     private ResponseEntity<Map<String, Object>> createErrorResponse(

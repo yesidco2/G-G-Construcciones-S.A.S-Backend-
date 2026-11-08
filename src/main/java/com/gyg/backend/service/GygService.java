@@ -6,6 +6,7 @@ import com.gyg.backend.exception.TooManyRequestsException;
 import com.gyg.backend.model.*;
 import com.gyg.backend.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,7 +27,9 @@ public class GygService {
 
     private static final long CONTACT_COOLDOWN_MINUTES = 30;
     private static final Pattern CONTACT_LINK_PATTERN = Pattern.compile("(?i)(https?://|www\\.)");
-    private static final Pattern TRACKING_CODE_PATTERN = Pattern.compile("^[A-Za-z0-9-]{6,40}$");
+    private static final Pattern TRACKING_CODE_PATTERN = Pattern.compile("^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{32}$");
+    private static final Pattern LEGACY_TRACKING_CODE_PATTERN = Pattern.compile("^[A-Za-z0-9-]{6,40}$");
+    private static final String DUMMY_TRACKING_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 
     @Autowired
     private ServicioRepository servicioRepository;
@@ -47,6 +51,15 @@ public class GygService {
 
     @Autowired
     private ChatEngine chatEngine;
+
+    @Autowired
+    private TrackingCodeService trackingCodeService;
+
+    @Autowired
+    private ContactCooldownLockService contactCooldownLockService;
+
+    @Value("${app.privacy.policy-version:2026-01}")
+    private String policyVersion;
 
     // 1. GET /api/institucional
     public InstitucionalDTO getInstitucional() {
@@ -74,7 +87,7 @@ public class GygService {
 
     // 4. POST /api/contacto
     @Transactional
-    public ContactoResponse crearContacto(ContactoRequest request) {
+    public void crearContacto(ContactoRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("La solicitud de contacto no puede ser nula");
         }
@@ -97,9 +110,13 @@ public class GygService {
         if (contarEnlaces(mensaje) > 2) {
             throw new IllegalArgumentException("El mensaje no puede contener mas de 2 enlaces");
         }
+        if (!Boolean.TRUE.equals(request.getAceptaPolitica())) {
+            throw new IllegalArgumentException("Debes aceptar la política de tratamiento de datos.");
+        }
 
         LocalDateTime now = LocalDateTime.now();
         String normalizedEmail = correo.toLowerCase(Locale.ROOT);
+        contactCooldownLockService.lockByEmail(normalizedEmail);
         LocalDateTime lastContact = solicitudContactoRepository
                 .findTopByCorreoOrderByFechaDesc(normalizedEmail)
                 .map(SolicitudContacto::getFecha)
@@ -123,9 +140,11 @@ public class GygService {
         solicitud.setNivelRiesgoSst(nivelRiesgoSst);
         solicitud.setMensaje(mensaje);
         solicitud.setFecha(now);
+        solicitud.setAceptaPolitica(true);
+        solicitud.setVersionPolitica(policyVersion);
+        solicitud.setFechaConsentimiento(now);
 
-        SolicitudContacto savedSolicitud = solicitudContactoRepository.save(solicitud);
-        return new ContactoResponse(savedSolicitud.getId(), nombre, correo, mensaje, now);
+        solicitudContactoRepository.save(solicitud);
     }
 
     // 5. POST /api/chat
@@ -153,12 +172,13 @@ public class GygService {
     public List<ProyectoDTO> getProyectos(String categoria) {
         String categoriaFiltro = categoria == null ? null : categoria.trim().toUpperCase(Locale.ROOT);
 
-        return obraRepository.findAll().stream()
+        return obraRepository.findAllByEliminadaEnIsNullOrderByIdDesc().stream()
                 .filter(obra -> categoriaFiltro == null || categoriaFiltro.equalsIgnoreCase(inferirCategoria(obra.getNombreObra())))
                 .map(obra -> new ProyectoDTO(
                         obra.getId(),
                         obra.getNombreObra(),
-                        inferirCategoria(obra.getNombreObra()),
+                        obra.getCategoria() == null || obra.getCategoria().isBlank()
+                                ? inferirCategoria(obra.getNombreObra()) : obra.getCategoria(),
                         construirDescripcion(obra.getNombreObra()),
                         construirMetricaDestacada(obra.getNombreObra()),
                         construirImagen(obra.getNombreObra())
@@ -166,20 +186,31 @@ public class GygService {
                 .collect(Collectors.toList());
     }
 
-    // 7. GET /api/obras/seguimiento/{codigo}
+    // 7. POST /api/obras/seguimiento
     public SeguimientoObraDTO getSeguimientoProyecto(String codigo) {
-        if (codigo == null || !TRACKING_CODE_PATTERN.matcher(codigo).matches()) {
-            throw new ResourceNotFoundException("Codigo de seguimiento invalido o no registrado");
+        String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
+        String codeHash = trackingCodeService.hash(candidate);
+        Optional<Obra> found = obraRepository.findByCodigoHashWithFotosAndHitos(codeHash);
+        boolean codeMatches = trackingCodeService.matches(
+                candidate, found.map(Obra::getCodigoHash).orElse(DUMMY_TRACKING_HASH));
+        boolean validFormat = TRACKING_CODE_PATTERN.matcher(candidate).matches()
+                || LEGACY_TRACKING_CODE_PATTERN.matcher(candidate).matches();
+        if (found.isEmpty() || !validFormat || !codeMatches) {
+            throw new ResourceNotFoundException("No se encontró el proyecto solicitado.");
         }
-
-        Obra obra = obraRepository.findByCodigoSeguimientoWithFotos(codigo)
-                .orElseThrow(() -> new ResourceNotFoundException("Codigo de seguimiento invalido o no registrado"));
+        Obra obra = found.get();
 
         List<FotoObraDTO> fotosObra = obra.getFotos().stream()
                 .map(f -> new FotoObraDTO(f.getUrl(), f.getFecha()))
                 .collect(Collectors.toList());
+        List<SeguimientoHitoDTO> hitos = obra.getHitos().stream()
+                .map(hito -> new SeguimientoHitoDTO(
+                        hito.getNombre(), hito.getDescripcion(),
+                        hito.getFechaObjetivo(), hito.isCompletado()))
+                .toList();
 
-        return new SeguimientoObraDTO(obra.getNombreObra(), obra.getPorcentajeAvance(), fotosObra);
+        return new SeguimientoObraDTO(
+                obra.getNombreObra(), obra.getPorcentajeAvance(), hitos, fotosObra);
     }
 
     // 8. GET /api/riesgos/labores

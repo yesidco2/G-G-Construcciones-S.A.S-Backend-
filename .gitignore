@@ -1,7 +1,11 @@
 target/
+/var/uploads/
 .idea/
 *.iml
 src/main/resources/application.properties
+.env
+.env.*
+!.env.example
 run-dev.ps1
 secrets/
 firebase-sa.json

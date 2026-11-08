@@ -2,10 +2,12 @@ package com.gyg.backend.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.firebase.auth.FirebaseAuth;
+import com.gyg.backend.service.VerifiedSessionService;
 import com.gyg.backend.service.UsuarioService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -23,6 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -37,10 +40,14 @@ public class SecurityConfig {
             HttpSecurity http,
             ObjectProvider<FirebaseAuth> firebaseAuthProvider,
             UsuarioService usuarioService,
+            VerifiedSessionService verifiedSessionService,
             ObjectMapper objectMapper,
+            @Value("${app.captcha.enabled:true}") boolean captchaEnabled,
             @Value("${app.swagger.public:false}") boolean swaggerPublic) throws Exception {
         FirebaseTokenFilter firebaseTokenFilter =
                 new FirebaseTokenFilter(firebaseAuthProvider.getIfAvailable(), usuarioService);
+        VerifiedSessionFilter verifiedSessionFilter =
+                new VerifiedSessionFilter(verifiedSessionService, objectMapper, captchaEnabled);
 
         http
                 .csrf(csrf -> csrf.disable())
@@ -50,14 +57,22 @@ public class SecurityConfig {
                                 .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
                         .httpStrictTransportSecurity(hsts -> hsts
                                 .includeSubDomains(true)
-                                .maxAgeInSeconds(31536000)))
+                                .maxAgeInSeconds(31536000))
+                        .addHeaderWriter((request, response) -> {
+                            response.setHeader("Permissions-Policy",
+                                    "camera=(), microphone=(), geolocation=()");
+                            if (request.getRequestURI().startsWith("/api/")) {
+                                response.setHeader("Content-Security-Policy",
+                                        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+                            }
+                        }))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) ->
-                                writeError(response, objectMapper, HttpStatus.UNAUTHORIZED,
+                                writeError(request, response, objectMapper, HttpStatus.UNAUTHORIZED,
                                         "No autorizado", "Debes autenticarte para acceder a este recurso."))
                         .accessDeniedHandler((request, response, exception) ->
-                                writeError(response, objectMapper, HttpStatus.FORBIDDEN,
+                                writeError(request, response, objectMapper, HttpStatus.FORBIDDEN,
                                         "Acceso denegado", "No tienes permisos para acceder a este recurso.")))
                 .authorizeHttpRequests(authorize -> {
                     authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
@@ -71,15 +86,20 @@ public class SecurityConfig {
                                 "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
                                 .authenticated();
                     }
-                    authorize.requestMatchers("/api/auth/**").authenticated()
-                            .requestMatchers("/api/admin/autorizados/**", "/api/admin/usuarios/**")
+                    authorize.requestMatchers("/api/auth/captcha/verify").permitAll()
+                            .requestMatchers("/api/auth/**").authenticated()
+                            .requestMatchers(HttpMethod.POST, "/api/obras/seguimiento").permitAll()
+                    .requestMatchers("/api/admin/consultas-chat").hasRole("ADMIN")
+                    .requestMatchers("/api/admin/autorizados/**", "/api/admin/usuarios/**")
                             .hasRole("ADMIN")
                             .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "INGENIERO")
                             .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
-                            .requestMatchers(HttpMethod.POST, "/api/contacto", "/api/chat").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/api/contacto", "/api/chat", "/api/newsletter")
+                            .permitAll()
                             .anyRequest().authenticated();
                 })
                 .addFilterBefore(firebaseTokenFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(verifiedSessionFilter, FirebaseTokenFilter.class)
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable());
 
@@ -88,23 +108,25 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource(
-            @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000}")
-            String configuredOrigins) {
+            Environment environment,
+            @Value("${app.cors.allowed-origins:}") String configuredOrigins,
+            @Value("${app.cors.dev-origins:http://localhost:*,http://127.0.0.1:*}") String devOrigins) {
         List<String> allowedOrigins = new ArrayList<>(Arrays.stream(configuredOrigins.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
                 .toList());
-        if (!allowedOrigins.contains("http://localhost:*")) {
-            allowedOrigins.add("http://localhost:*");
-        }
-        if (!allowedOrigins.contains("http://127.0.0.1:*")) {
-            allowedOrigins.add("http://127.0.0.1:*");
+        if (environment.acceptsProfiles(org.springframework.core.env.Profiles.of("dev"))) {
+            Arrays.stream(devOrigins.split(","))
+                    .map(String::trim)
+                    .filter(origin -> !origin.isEmpty())
+                    .filter(origin -> !allowedOrigins.contains(origin))
+                    .forEach(allowedOrigins::add);
         }
 
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Captcha-Token"));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(Duration.ofSeconds(3600));
 
@@ -114,6 +136,7 @@ public class SecurityConfig {
     }
 
     private static void writeError(
+            jakarta.servlet.http.HttpServletRequest request,
             HttpServletResponse response,
             ObjectMapper objectMapper,
             HttpStatus status,
@@ -124,9 +147,11 @@ public class SecurityConfig {
         response.setCharacterEncoding("UTF-8");
 
         Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
         body.put("status", status.value());
         body.put("error", error);
         body.put("message", message);
+        body.put("path", request.getRequestURI());
         objectMapper.writeValue(response.getOutputStream(), body);
     }
 }

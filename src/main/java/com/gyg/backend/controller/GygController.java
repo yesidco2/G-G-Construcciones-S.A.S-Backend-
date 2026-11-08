@@ -3,22 +3,28 @@ package com.gyg.backend.controller;
 import com.gyg.backend.dto.*;
 import com.gyg.backend.service.GygService;
 import com.gyg.backend.service.RateLimitService;
+import com.gyg.backend.service.TrackingCodeService;
+import com.gyg.backend.service.CaptchaService;
+import com.gyg.backend.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api")
+@Validated
 @Tag(name = "G&G Construcciones API", description = "Servicios REST para el portal de G&G Construcciones (Ingenieria Civil y Consultoria SST)")
 public class GygController {
 
@@ -27,6 +33,15 @@ public class GygController {
 
     @Autowired
     private RateLimitService rateLimitService;
+
+    @Autowired
+    private TrackingCodeService trackingCodeService;
+
+    @Autowired
+    private CaptchaService captchaService;
+
+    @Value("${app.captcha.enabled:true}")
+    private boolean captchaEnabled;
 
     @Value("${app.rate-limit.contacto-per-hour:5}")
     private int contactoPerHour;
@@ -59,17 +74,20 @@ public class GygController {
     @Operation(summary = "Registrar una solicitud de contacto o cotizacion desde el formulario del portal")
     public ResponseEntity<ContactoResponse> crearContacto(
             @Valid @RequestBody ContactoRequest request,
+            @RequestHeader(name = "X-Captcha-Token", required = false) String captchaToken,
             HttpServletRequest httpRequest) {
         rateLimitService.check(
                 "contacto", httpRequest, contactoPerHour, Duration.ofHours(1),
                 "Has alcanzado el limite de solicitudes de contacto. Intenta mas tarde.");
+        if (captchaEnabled) {
+            captchaService.verifySubmissionToken(captchaToken, httpRequest);
+        }
         if (request.getSitioWeb() != null && !request.getSitioWeb().isBlank()) {
             return ResponseEntity.status(HttpStatus.CREATED).body(
-                    new ContactoResponse(0L, request.getNombre(), request.getCorreo(), request.getMensaje(),
-                            LocalDateTime.now()));
+                    new ContactoResponse(0L));
         }
-        ContactoResponse response = gygService.crearContacto(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        gygService.crearContacto(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new ContactoResponse(0L));
     }
 
     @PostMapping("/chat")
@@ -85,19 +103,30 @@ public class GygController {
 
     @GetMapping("/proyectos")
     @Operation(summary = "Listar obras del portafolio con filtro opcional por categoria (CIVIL o SST)")
-    public ResponseEntity<List<ProyectoDTO>> getProyectos(@RequestParam(required = false) String categoria) {
+    public ResponseEntity<List<ProyectoDTO>> getProyectos(
+            @RequestParam(required = false) @Pattern(regexp = "CIVIL|SST") String categoria) {
         return ResponseEntity.ok(gygService.getProyectos(categoria));
     }
 
-    @GetMapping("/obras/seguimiento/{codigo}")
-    @Operation(summary = "Consultar el seguimiento de una obra y su galeria de fotos por codigo de acceso")
+    @PostMapping("/obras/seguimiento")
+    @Operation(summary = "Consultar el seguimiento de una obra por código de acceso")
     public ResponseEntity<SeguimientoObraDTO> getSeguimientoObra(
-            @PathVariable("codigo") String codigo,
+            @RequestBody SeguimientoRequest request,
             HttpServletRequest httpRequest) {
         rateLimitService.check(
                 "seguimiento", httpRequest, seguimientoPerMinute, Duration.ofMinutes(1),
                 "Has alcanzado el limite de consultas de seguimiento. Intenta nuevamente en un minuto.");
-        return ResponseEntity.ok(gygService.getSeguimientoProyecto(codigo));
+        String codigo = request == null ? null : request.getCodigo();
+        try {
+            return ResponseEntity.ok(gygService.getSeguimientoProyecto(codigo));
+        } catch (ResourceNotFoundException notFound) {
+            String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
+            rateLimitService.check(
+                    "seguimiento-fallido-" + trackingCodeService.hash(candidate),
+                    httpRequest, 5, Duration.ofMinutes(15),
+                    "Demasiados intentos de seguimiento. Intenta más tarde.");
+            throw notFound;
+        }
     }
 
     @GetMapping("/riesgos/labores")
@@ -109,7 +138,7 @@ public class GygController {
     @GetMapping("/riesgos/{laborId}")
     @Operation(summary = "Obtener la matriz de riesgos y EPP recomendados para una labor especifica")
     public ResponseEntity<LaborDetalleDTO> getLaborDetalle(
-            @PathVariable("laborId") Long laborId) {
+            @PathVariable("laborId") @Positive Long laborId) {
         return ResponseEntity.ok(gygService.getLaborDetalle(laborId));
     }
 

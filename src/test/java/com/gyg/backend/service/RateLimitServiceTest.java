@@ -15,17 +15,18 @@ class RateLimitServiceTest {
 
     @Test
     void shouldBlockRequestsAfterLimit() {
-        RateLimitService service = new RateLimitService(false);
+        RateLimitService service = new RateLimitService();
         MockHttpServletRequest request = requestFrom("192.0.2.1");
 
         assertDoesNotThrow(() -> service.check("contacto", request, 1, WINDOW, "Limite excedido"));
-        assertThrows(TooManyRequestsException.class,
+        TooManyRequestsException exception = assertThrows(TooManyRequestsException.class,
                 () -> service.check("contacto", request, 1, WINDOW, "Limite excedido"));
+        org.junit.jupiter.api.Assertions.assertTrue(exception.getRetryAfterSeconds() > 0);
     }
 
     @Test
     void shouldSeparateClientsAndScopes() {
-        RateLimitService service = new RateLimitService(false);
+        RateLimitService service = new RateLimitService();
         MockHttpServletRequest firstClient = requestFrom("192.0.2.1");
         MockHttpServletRequest secondClient = requestFrom("192.0.2.2");
 
@@ -38,7 +39,7 @@ class RateLimitServiceTest {
 
     @Test
     void shouldIgnoreForwardedForWhenProxyHeadersAreNotTrusted() {
-        RateLimitService service = new RateLimitService(false);
+        RateLimitService service = new RateLimitService();
         MockHttpServletRequest firstRequest = requestFrom("192.0.2.1");
         firstRequest.addHeader("X-Forwarded-For", "198.51.100.1");
         MockHttpServletRequest secondRequest = requestFrom("192.0.2.1");

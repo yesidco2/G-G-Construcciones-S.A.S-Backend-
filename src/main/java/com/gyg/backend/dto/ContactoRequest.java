@@ -1,7 +1,9 @@
 package com.gyg.backend.dto;
 
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -41,6 +43,10 @@ public class ContactoRequest {
     private String mensaje;
 
     private String sitioWeb;
+
+    @NotNull(message = "Debes aceptar la política de tratamiento de datos")
+    @AssertTrue(message = "Debes aceptar la política de tratamiento de datos")
+    private Boolean aceptaPolitica;
 
     public ContactoRequest() {
     }
@@ -108,5 +114,13 @@ public class ContactoRequest {
 
     public void setSitioWeb(String sitioWeb) {
         this.sitioWeb = sitioWeb;
+    }
+
+    public Boolean getAceptaPolitica() {
+        return aceptaPolitica;
+    }
+
+    public void setAceptaPolitica(Boolean aceptaPolitica) {
+        this.aceptaPolitica = aceptaPolitica;
     }
 }

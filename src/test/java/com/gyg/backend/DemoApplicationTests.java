@@ -7,16 +7,20 @@ import com.gyg.backend.model.Rol;
 import com.gyg.backend.repository.AdministradorAutorizadoRepository;
 
 import org.springframework.test.context.ActiveProfiles;
+import org.flywaydb.core.Flyway;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
-@ActiveProfiles("test")
+@ActiveProfiles({"test", "dev"})
 class DemoApplicationTests {
 
 	@Autowired
 	private AdministradorAutorizadoRepository autorizadoRepository;
+
+	@Autowired
+	private Flyway flyway;
 
 	@Test
 	void contextLoads() {
@@ -29,6 +33,13 @@ class DemoApplicationTests {
 		assertTrue(seeded.isPresent());
 		assertEquals(Rol.ADMIN, seeded.get().getRol());
 		assertEquals("sistema", seeded.get().getCreadoPor());
+	}
+
+	@Test
+	void appliesInitialFlywaySchemaBeforeHibernateValidation() {
+		assertTrue(java.util.Arrays.stream(flyway.info().applied())
+				.anyMatch(migration -> migration.getVersion() != null
+						&& "1".equals(migration.getVersion().getVersion())));
 	}
 
 }

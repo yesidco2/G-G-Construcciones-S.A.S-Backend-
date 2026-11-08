@@ -2,6 +2,7 @@ package com.gyg.backend.model;
 
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,8 +17,8 @@ public class Obra {
     @Column(name = "nombre_obra", nullable = false)
     private String nombreObra;
 
-    @Column(name = "codigo_seguimiento", nullable = false)
-    private String codigoSeguimiento;
+    @Column(name = "codigo_hash", nullable = false, unique = true, length = 64)
+    private String codigoHash;
 
     @Column(nullable = false)
     private String estado = "EN_PROGRESO";
@@ -28,21 +29,32 @@ public class Obra {
     @Column(name = "cliente_id", nullable = false)
     private Long clienteId;
 
+    @Column(name = "cliente", nullable = false)
+    private String cliente = "Cliente";
+
+    @Column(name = "categoria", nullable = false)
+    private String categoria = "CIVIL";
+
+    @Column(name = "eliminada_en")
+    private LocalDateTime eliminadaEn;
+
     @OneToMany(mappedBy = "obra", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<FotoObra> fotos = new ArrayList<>();
+
+    @OneToMany(mappedBy = "obra", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<HitoObra> hitos = new ArrayList<>();
 
     public Obra() {
     }
 
-    public Obra(String nombreObra, String codigoSeguimiento, String estado, Long clienteId) {
+    public Obra(String nombreObra, String estado, Long clienteId) {
         this.nombreObra = nombreObra;
-        this.codigoSeguimiento = codigoSeguimiento;
         this.estado = estado;
         this.clienteId = clienteId;
     }
 
-    public Obra(String nombreObra, String codigoSeguimiento, String estado, Long clienteId, Integer porcentajeAvance) {
-        this(nombreObra, codigoSeguimiento, estado, clienteId);
+    public Obra(String nombreObra, String estado, Long clienteId, Integer porcentajeAvance) {
+        this(nombreObra, estado, clienteId);
         this.porcentajeAvance = porcentajeAvance;
     }
 
@@ -62,12 +74,12 @@ public class Obra {
         this.nombreObra = nombreObra;
     }
 
-    public String getCodigoSeguimiento() {
-        return codigoSeguimiento;
+    public String getCodigoHash() {
+        return codigoHash;
     }
 
-    public void setCodigoSeguimiento(String codigoSeguimiento) {
-        this.codigoSeguimiento = codigoSeguimiento;
+    public void setCodigoHash(String codigoHash) {
+        this.codigoHash = codigoHash;
     }
 
     public String getEstado() {
@@ -94,12 +106,53 @@ public class Obra {
         this.clienteId = clienteId;
     }
 
+    public String getCliente() {
+        return cliente;
+    }
+
+    public void setCliente(String cliente) {
+        this.cliente = cliente;
+    }
+
+    public String getCategoria() {
+        return categoria;
+    }
+
+    public void setCategoria(String categoria) {
+        this.categoria = categoria;
+    }
+
+    public LocalDateTime getEliminadaEn() {
+        return eliminadaEn;
+    }
+
+    public void setEliminadaEn(LocalDateTime eliminadaEn) {
+        this.eliminadaEn = eliminadaEn;
+    }
+
     public List<FotoObra> getFotos() {
         return fotos;
     }
 
     public void setFotos(List<FotoObra> fotos) {
         this.fotos = fotos;
+    }
+
+    public List<HitoObra> getHitos() {
+        return hitos;
+    }
+
+    public void setHitos(List<HitoObra> hitos) {
+        this.hitos = hitos;
+    }
+
+    public void addHito(HitoObra hito) {
+        hitos.add(hito);
+        hito.setObra(this);
+    }
+
+    public void clearHitos() {
+        hitos.clear();
     }
 
     public void addFoto(FotoObra foto) {
