@@ -26,7 +26,6 @@ public class CaptchaService {
     private final CaptchaVerificationClient verificationClient;
     private final int ticketTtlSeconds;
     private final boolean enabled;
-    private final boolean trustProxyHeaders;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
     private final Map<String, Ticket> tickets = new LinkedHashMap<>();
@@ -35,16 +34,14 @@ public class CaptchaService {
     public CaptchaService(
             CaptchaVerificationClient verificationClient,
             @Value("${app.captcha.ticket-ttl-seconds:120}") int ticketTtlSeconds,
-            @Value("${app.captcha.enabled:true}") boolean enabled,
-            @Value("${app.security.trust-proxy-headers:false}") boolean trustProxyHeaders) {
-        this(verificationClient, ticketTtlSeconds, enabled, trustProxyHeaders, Clock.systemUTC());
+            @Value("${app.captcha.enabled:true}") boolean enabled) {
+        this(verificationClient, ticketTtlSeconds, enabled, Clock.systemUTC());
     }
 
     CaptchaService(
             CaptchaVerificationClient verificationClient,
             int ticketTtlSeconds,
             boolean enabled,
-            boolean trustProxyHeaders,
             Clock clock) {
         if (ticketTtlSeconds < 1) {
             throw new IllegalArgumentException("El TTL de tickets CAPTCHA debe ser positivo.");
@@ -52,8 +49,17 @@ public class CaptchaService {
         this.verificationClient = verificationClient;
         this.ticketTtlSeconds = ticketTtlSeconds;
         this.enabled = enabled;
-        this.trustProxyHeaders = trustProxyHeaders;
         this.clock = clock;
+    }
+
+    public void verifySubmissionToken(String captchaToken, HttpServletRequest request) {
+        if (!enabled) {
+            throw new CaptchaProviderUnavailableException();
+        }
+        if (captchaToken == null || captchaToken.isBlank()
+                || !verificationClient.verify(captchaToken, clientIp(request))) {
+            throw new InvalidCaptchaException();
+        }
     }
 
     public TicketResponse verifyAndIssue(String captchaToken, HttpServletRequest request) {
@@ -109,15 +115,6 @@ public class CaptchaService {
     }
 
     private String clientIp(HttpServletRequest request) {
-        if (trustProxyHeaders) {
-            String forwardedFor = request.getHeader("X-Forwarded-For");
-            if (forwardedFor != null && !forwardedFor.isBlank()) {
-                String firstAddress = forwardedFor.split(",", 2)[0].trim();
-                if (!firstAddress.isEmpty()) {
-                    return firstAddress;
-                }
-            }
-        }
         String remoteAddress = request.getRemoteAddr();
         return remoteAddress == null || remoteAddress.isBlank() ? "unknown" : remoteAddress;
     }

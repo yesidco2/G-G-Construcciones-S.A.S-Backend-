@@ -49,3 +49,7 @@ app:
     contacto-per-hour: ${APP_RATE_LIMIT_CONTACTO_PER_HOUR:5}
     chat-per-minute: ${APP_RATE_LIMIT_CHAT_PER_MINUTE:20}
     seguimiento-per-minute: ${APP_RATE_LIMIT_SEGUIMIENTO_PER_MINUTE:10}
+  privacy:
+    policy-version: ${APP_PRIVACY_POLICY_VERSION:2026-01}
+    chat-retention-months: ${APP_CHAT_LOG_RETENTION_MONTHS:12}
+    chat-retention-cron: ${APP_CHAT_LOG_RETENTION_CRON:0 0 3 * * *}

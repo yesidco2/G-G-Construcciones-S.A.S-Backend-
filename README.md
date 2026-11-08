@@ -97,11 +97,19 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 | **GET** | `/api/datos-legales` | Devuelve el NIT y la dirección física de la empresa. |
 | **GET** | `/api/proyectos` | Retorna el portafolio de proyectos. Opcionalmente filtrable por query param `?categoria=CIVIL` o `?categoria=SST`. |
 | **POST** | `/api/obras/seguimiento` | Recibe `{ "codigo": "..." }` y retorna solo el nombre, avance, hitos y fotos. Los códigos nuevos son aleatorios de alta entropía; la base de datos almacena únicamente su HMAC-SHA256. |
-| **POST** | `/api/contacto` | Recibe y valida `{ nombre, empresa, correo, telefono, tipoServicio, mensaje }`. Guarda la solicitud en BD y retorna 201. |
+| **POST** | `/api/contacto` | Recibe `{ nombre, empresa, correo, telefono, tipoServicio, mensaje, aceptaPolitica }`. El consentimiento es obligatorio; cuando CAPTCHA está activo, requiere `X-Captcha-Token`. Guarda la solicitud y retorna 201. |
+| **POST** | `/api/newsletter` | Registra una suscripción con `{ correo, aceptaPolitica }`; usa `X-Captcha-Token` cuando CAPTCHA está activo. |
 | **POST** | `/api/chat` | Recibe `{ pregunta }`, procesa una respuesta automática basada en palabras clave de normativas SST, la registra en base de datos y la retorna. |
+| **GET** | `/api/admin/consultas-chat?page=0&size=20` | Lista registros de chat paginados; requiere usuario administrador con sesión verificada. |
 | **GET** | `/api/riesgos/labores` | Retorna la lista de actividades/labores críticas de seguridad laboral. |
 | **GET** | `/api/riesgos/{laborId}` | Retorna la matriz de riesgos detallada y los EPP sugeridos para una labor en particular. |
 | **GET** | `/api/politicas-ambientales` | Devuelve la lista de políticas y compromisos de mitigación ambiental de la empresa. |
+
+### Consentimiento y retención de datos
+
+Las solicitudes de contacto y las suscripciones al newsletter deben incluir `aceptaPolitica: true`. La versión vigente se configura con `APP_PRIVACY_POLICY_VERSION` y se guarda junto con la fecha del consentimiento. La verificación CAPTCHA de contacto y newsletter se controla con `APP_CAPTCHA_ENABLED`, `APP_CAPTCHA_PROVIDER` y `APP_CAPTCHA_SECRET`; si está habilitada, el token del proveedor se envía en el encabezado `X-Captcha-Token`.
+
+Los registros del chat se eliminan automáticamente según `APP_CHAT_LOG_RETENTION_MONTHS` (12 meses por defecto), en el horario definido por `APP_CHAT_LOG_RETENTION_CRON`.
 
 ### Prueba de Seguimiento de Proyecto
 En el perfil `dev`, `DataLoader` precarga obras y fotos si la tabla de obras está vacía. Los códigos de demostración disponibles son:

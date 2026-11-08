@@ -6,6 +6,7 @@ import com.gyg.backend.exception.TooManyRequestsException;
 import com.gyg.backend.model.*;
 import com.gyg.backend.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,6 +58,9 @@ public class GygService {
     @Autowired
     private ContactCooldownLockService contactCooldownLockService;
 
+    @Value("${app.privacy.policy-version:2026-01}")
+    private String policyVersion;
+
     // 1. GET /api/institucional
     public InstitucionalDTO getInstitucional() {
         return new InstitucionalDTO(
@@ -106,6 +110,9 @@ public class GygService {
         if (contarEnlaces(mensaje) > 2) {
             throw new IllegalArgumentException("El mensaje no puede contener mas de 2 enlaces");
         }
+        if (!Boolean.TRUE.equals(request.getAceptaPolitica())) {
+            throw new IllegalArgumentException("Debes aceptar la política de tratamiento de datos.");
+        }
 
         LocalDateTime now = LocalDateTime.now();
         String normalizedEmail = correo.toLowerCase(Locale.ROOT);
@@ -133,6 +140,9 @@ public class GygService {
         solicitud.setNivelRiesgoSst(nivelRiesgoSst);
         solicitud.setMensaje(mensaje);
         solicitud.setFecha(now);
+        solicitud.setAceptaPolitica(true);
+        solicitud.setVersionPolitica(policyVersion);
+        solicitud.setFechaConsentimiento(now);
 
         SolicitudContacto savedSolicitud = solicitudContactoRepository.save(solicitud);
         return new ContactoResponse(savedSolicitud.getId(), nombre, correo, mensaje, now);

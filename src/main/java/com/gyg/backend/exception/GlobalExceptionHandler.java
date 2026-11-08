@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import com.gyg.backend.service.CaptchaProviderUnavailableException;
+import com.gyg.backend.service.CaptchaService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -98,6 +100,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header(HttpHeaders.RETRY_AFTER, Long.toString(ex.getRetryAfterSeconds()))
                 .body(body);
+    }
+
+    @ExceptionHandler(CaptchaService.InvalidCaptchaException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidCaptcha(
+            CaptchaService.InvalidCaptchaException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.BAD_REQUEST, "Bad Request", "La verificación CAPTCHA no fue válida.", request);
+    }
+
+    @ExceptionHandler(CaptchaProviderUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleCaptchaUnavailable(
+            CaptchaProviderUnavailableException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+                "No fue posible verificar CAPTCHA. Intenta nuevamente.", request);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

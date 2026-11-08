@@ -4,6 +4,7 @@ import com.gyg.backend.dto.*;
 import com.gyg.backend.service.GygService;
 import com.gyg.backend.service.RateLimitService;
 import com.gyg.backend.service.TrackingCodeService;
+import com.gyg.backend.service.CaptchaService;
 import com.gyg.backend.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,6 +33,12 @@ public class GygController {
 
     @Autowired
     private TrackingCodeService trackingCodeService;
+
+    @Autowired
+    private CaptchaService captchaService;
+
+    @Value("${app.captcha.enabled:true}")
+    private boolean captchaEnabled;
 
     @Value("${app.rate-limit.contacto-per-hour:5}")
     private int contactoPerHour;
@@ -64,10 +71,14 @@ public class GygController {
     @Operation(summary = "Registrar una solicitud de contacto o cotizacion desde el formulario del portal")
     public ResponseEntity<ContactoResponse> crearContacto(
             @Valid @RequestBody ContactoRequest request,
+            @RequestHeader(name = "X-Captcha-Token", required = false) String captchaToken,
             HttpServletRequest httpRequest) {
         rateLimitService.check(
                 "contacto", httpRequest, contactoPerHour, Duration.ofHours(1),
                 "Has alcanzado el limite de solicitudes de contacto. Intenta mas tarde.");
+        if (captchaEnabled) {
+            captchaService.verifySubmissionToken(captchaToken, httpRequest);
+        }
         if (request.getSitioWeb() != null && !request.getSitioWeb().isBlank()) {
             return ResponseEntity.status(HttpStatus.CREATED).body(
                     new ContactoResponse(0L, request.getNombre(), request.getCorreo(), request.getMensaje(),

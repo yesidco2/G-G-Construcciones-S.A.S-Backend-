@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gyg.backend.dto.ChatRequest;
 import com.gyg.backend.dto.ContactoRequest;
 import com.gyg.backend.repository.SolicitudContactoRepository;
+import com.gyg.backend.repository.NewsletterRepository;
+import com.gyg.backend.dto.NewsletterRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -39,6 +41,9 @@ class GygControllerIntegrationTest {
 
     @Autowired
     private SolicitudContactoRepository solicitudContactoRepository;
+
+    @Autowired
+    private NewsletterRepository newsletterRepository;
 
     @Test
     void shouldRequireAuthenticationForProfileAndAdminEndpoints() throws Exception {
@@ -78,6 +83,22 @@ class GygControllerIntegrationTest {
     }
 
     @Test
+    @WithMockUser(roles = "INGENIERO")
+    void shouldDenyEngineerFromChatConsultationEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/consultas-chat"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void shouldAllowAdminToReadPagedChatConsultations() throws Exception {
+        mockMvc.perform(get("/api/admin/consultas-chat").param("page", "0").param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.size").value(10));
+    }
+
+    @Test
     void shouldCreateContactoAndRejectRepeatedEmail() throws Exception {
         String correo = "integration-" + UUID.randomUUID() + "@example.com";
         ContactoRequest request = new ContactoRequest(
@@ -88,12 +109,18 @@ class GygControllerIntegrationTest {
                 "Consultoría SST",
                 "Necesito una cotización urgente"
         );
+        request.setAceptaPolitica(true);
 
         mockMvc.perform(post("/api/contacto")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber());
+        var savedContact = solicitudContactoRepository.findTopByCorreoOrderByFechaDesc(correo)
+                .orElseThrow();
+        org.junit.jupiter.api.Assertions.assertTrue(savedContact.isAceptaPolitica());
+        org.junit.jupiter.api.Assertions.assertEquals("test-policy-v1", savedContact.getVersionPolitica());
+        org.junit.jupiter.api.Assertions.assertNotNull(savedContact.getFechaConsentimiento());
 
         request.setCorreo(correo.toUpperCase());
         mockMvc.perform(post("/api/contacto")
@@ -109,6 +136,7 @@ class GygControllerIntegrationTest {
         ContactoRequest request = new ContactoRequest(
                 "Ana Gomez", "G&G Construcciones", uniqueEmail(), null,
                 "Consultoría SST", "Necesito asesoría en seguridad");
+        request.setAceptaPolitica(true);
         String body = objectMapper.writeValueAsString(request);
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
@@ -145,6 +173,39 @@ class GygControllerIntegrationTest {
     }
 
     @Test
+    void shouldRequireExplicitPrivacyConsentForContacto() throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"Ana Gomez\",\"empresa\":\"Empresa\","
+                                + "\"correo\":\"" + uniqueEmail() + "\",\"telefono\":\"\","
+                                + "\"tipoServicio\":\"Obra Civil\","
+                                + "\"mensaje\":\"Necesito una cotizacion\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldStoreNewsletterConsentAndRequireIt() throws Exception {
+        String email = uniqueEmail();
+        NewsletterRequest request = new NewsletterRequest();
+        request.setCorreo(email);
+        request.setAceptaPolitica(true);
+
+        mockMvc.perform(post("/api/newsletter")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNoContent());
+        var saved = newsletterRepository.findByCorreo(email).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertTrue(saved.isAceptaPolitica());
+        org.junit.jupiter.api.Assertions.assertEquals("test-policy-v1", saved.getVersionPolitica());
+        org.junit.jupiter.api.Assertions.assertNotNull(saved.getFechaConsentimiento());
+
+        mockMvc.perform(post("/api/newsletter")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correo\":\"" + uniqueEmail() + "\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void shouldRejectContactoWithInvalidFieldsAndTooManyLinks() throws Exception {
         assertContactoBadRequest(new ContactoRequest(
                 "Ana 2", "Empresa", uniqueEmail(), "3001234567", "Obra Civil", "Necesito una cotizacion"));
@@ -169,6 +230,7 @@ class GygControllerIntegrationTest {
         ContactoRequest request = new ContactoRequest(
                 "Ana Gomez", "G&G Construcciones", uniqueEmail(), null,
                 "Consultoría SST", "Necesito asesoría en seguridad");
+        request.setAceptaPolitica(true);
 
         mockMvc.perform(post("/api/contacto")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -183,6 +245,7 @@ class GygControllerIntegrationTest {
         ContactoRequest request = new ContactoRequest(
                 "Ana Gomez", "G&G Construcciones", correo, null,
                 "Consultoría SST", "Necesito asesoría en seguridad");
+        request.setAceptaPolitica(true);
         request.setSitioWeb("https://spam.example");
 
         mockMvc.perform(post("/api/contacto")

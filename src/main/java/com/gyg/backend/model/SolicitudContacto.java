@@ -34,6 +34,15 @@ public class SolicitudContacto {
     @Column(nullable = false)
     private LocalDateTime fecha;
 
+    @Column(name = "acepta_politica", nullable = false)
+    private boolean aceptaPolitica;
+
+    @Column(name = "version_politica", length = 50)
+    private String versionPolitica;
+
+    @Column(name = "fecha_consentimiento")
+    private LocalDateTime fechaConsentimiento;
+
     public Long getId() {
         return id;
     }
@@ -104,5 +113,29 @@ public class SolicitudContacto {
 
     public void setFecha(LocalDateTime fecha) {
         this.fecha = fecha;
+    }
+
+    public boolean isAceptaPolitica() {
+        return aceptaPolitica;
+    }
+
+    public void setAceptaPolitica(boolean aceptaPolitica) {
+        this.aceptaPolitica = aceptaPolitica;
+    }
+
+    public String getVersionPolitica() {
+        return versionPolitica;
+    }
+
+    public void setVersionPolitica(String versionPolitica) {
+        this.versionPolitica = versionPolitica;
+    }
+
+    public LocalDateTime getFechaConsentimiento() {
+        return fechaConsentimiento;
+    }
+
+    public void setFechaConsentimiento(LocalDateTime fechaConsentimiento) {
+        this.fechaConsentimiento = fechaConsentimiento;
     }
 }

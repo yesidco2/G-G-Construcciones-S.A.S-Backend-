@@ -74,8 +74,23 @@ class CaptchaServiceTest {
                 () -> service.verifyAndIssue("provider-token", request("192.0.2.10", "Browser A")));
     }
 
+    @Test
+    void shouldVerifySubmissionCaptchaAgainstRemoteAddress() {
+        AtomicReference<String> verifiedIp = new AtomicReference<>();
+        CaptchaService service = service((token, ip) -> {
+            verifiedIp.set(ip);
+            return true;
+        }, Clock.systemUTC());
+        MockHttpServletRequest request = request("192.0.2.10", "Browser A");
+        request.addHeader("X-Forwarded-For", "198.51.100.10");
+
+        service.verifySubmissionToken("provider-token", request);
+
+        assertEquals("192.0.2.10", verifiedIp.get());
+    }
+
     private static CaptchaService service(CaptchaVerificationClient provider, Clock clock) {
-        return new CaptchaService(provider, 120, true, false, clock);
+        return new CaptchaService(provider, 120, true, clock);
     }
 
     private static MockHttpServletRequest request(String ip, String userAgent) {
