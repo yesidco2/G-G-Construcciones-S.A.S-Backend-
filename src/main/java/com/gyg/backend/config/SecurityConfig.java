@@ -6,6 +6,7 @@ import com.gyg.backend.service.UsuarioService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -88,17 +89,19 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource(
-            @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000}")
-            String configuredOrigins) {
+            Environment environment,
+            @Value("${app.cors.allowed-origins:}") String configuredOrigins,
+            @Value("${app.cors.dev-origins:http://localhost:*,http://127.0.0.1:*}") String devOrigins) {
         List<String> allowedOrigins = new ArrayList<>(Arrays.stream(configuredOrigins.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
                 .toList());
-        if (!allowedOrigins.contains("http://localhost:*")) {
-            allowedOrigins.add("http://localhost:*");
-        }
-        if (!allowedOrigins.contains("http://127.0.0.1:*")) {
-            allowedOrigins.add("http://127.0.0.1:*");
+        if (environment.acceptsProfiles(org.springframework.core.env.Profiles.of("dev"))) {
+            Arrays.stream(devOrigins.split(","))
+                    .map(String::trim)
+                    .filter(origin -> !origin.isEmpty())
+                    .filter(origin -> !allowedOrigins.contains(origin))
+                    .forEach(allowedOrigins::add);
         }
 
         CorsConfiguration configuration = new CorsConfiguration();

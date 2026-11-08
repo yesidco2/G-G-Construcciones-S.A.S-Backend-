@@ -6,7 +6,7 @@ El backend sirve de API REST para un frontend desarrollado en React.
 
 ## Tecnologías Utilizadas
 - **Java 17**
-- **Spring Boot 3.3.5**
+- **Spring Boot 3.5.16**
 - **Maven**
 - **PostgreSQL** (Entorno de desarrollo/producción)
 - **H2 Database** (Entorno de pruebas/tests de integración)
@@ -25,13 +25,16 @@ El backend sirve de API REST para un frontend desarrollado en React.
    - `DB_URL`: URL JDBC de PostgreSQL, por ejemplo `jdbc:postgresql://localhost:5432/gygdatabase`
    - `DB_USER`: usuario de PostgreSQL
    - `DB_PASSWORD`: contraseña de PostgreSQL
-   - `APP_CORS_ALLOWED_ORIGINS` (opcional): orígenes separados por comas. Por defecto permite `http://localhost:5173,http://localhost:3000`.
+   - `APP_CORS_ALLOWED_ORIGINS`: orígenes de frontend separados por comas; en producción no se permiten orígenes locales por defecto.
+   - `SPRING_PROFILES_ACTIVE=dev` solo para desarrollo local; añade orígenes localhost y carga datos demostrativos.
 
    Para producción en GitHub Pages, agrega el origen del sitio, por ejemplo `https://<usuario>.github.io`, a `APP_CORS_ALLOWED_ORIGINS`.
 
 4. Para ejecutar con Firebase habilitado, descarga el archivo JSON de credenciales de la cuenta de servicio desde Firebase Console. No lo agregues al repositorio. La ruta del archivo y el ID del proyecto deben estar configurados en el entorno de ejecución.
 
 > No publiques credenciales de base de datos. `application.properties.example` documenta la configuración sin incluir secretos.
+> Copia `.env.example` como `.env` para preparar variables localmente y completa valores solo en ese archivo ignorado por Git o en el gestor de secretos del despliegue. En producción, Hibernate usa `ddl-auto=validate`; Flyway crea el esquema en instalaciones nuevas y toma como baseline version 1 los esquemas existentes no vacíos, sin recrear sus tablas ni borrar sus datos.
+> Para que el escaneo OWASP de GitHub Actions consulte NVD, configura `NVD_API_KEY` como secreto del repositorio.
 
 ---
 
@@ -44,6 +47,10 @@ Desde PowerShell, ejecuta el script de desarrollo en la raíz del proyecto:
 ```
 
 Antes de usarlo, revisa `run-dev.ps1` y ajusta `FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`, `APP_ADMIN_EMAILS`, `DB_URL` y `DB_USER` a tu entorno. El script comprueba que exista el archivo de credenciales de Firebase y solicita la contraseña de PostgreSQL al ejecutarse; no la guarda en el archivo. La base de datos indicada en `DB_URL` debe existir.
+Activa el perfil `dev` en la terminal antes de iniciarlo para habilitar los datos de demostración y los orígenes localhost:
+```powershell
+$env:SPRING_PROFILES_ACTIVE = "dev"
+```
 
 Como alternativa, puedes iniciar Spring Boot directamente con el wrapper Maven, siempre que hayas configurado las variables de entorno requeridas (`DB_URL`, `DB_USER`, `DB_PASSWORD` y las de Firebase cuando corresponda):
 ```powershell
