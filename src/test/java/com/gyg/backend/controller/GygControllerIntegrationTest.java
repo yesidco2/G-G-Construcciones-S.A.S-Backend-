@@ -47,6 +47,31 @@ class GygControllerIntegrationTest {
     private NewsletterRepository newsletterRepository;
 
     @Test
+    void shouldNeverSetCookiesOnApiResponses() throws Exception {
+        mockMvc.perform(get("/api/servicios"))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+
+        ContactoRequest contact = new ContactoRequest(
+                "Ana Gomez",
+                "G&G Construcciones",
+                uniqueEmail(),
+                "",
+                "Consultoría SST",
+                "Necesito una cotización de servicios");
+        contact.setAceptaPolitica(true);
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(contact)))
+                .andExpect(status().isCreated())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+
+        mockMvc.perform(get("/api/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+    }
+
+    @Test
     void shouldRequireAuthenticationForProfileAndAdminEndpoints() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
                 .andExpect(status().isUnauthorized())
