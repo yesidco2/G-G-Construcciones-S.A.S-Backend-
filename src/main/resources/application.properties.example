@@ -21,6 +21,7 @@ app.rate-limit.contacto-per-hour=${APP_RATE_LIMIT_CONTACTO_PER_HOUR:5}
 app.rate-limit.chat-per-minute=${APP_RATE_LIMIT_CHAT_PER_MINUTE:20}
 app.rate-limit.seguimiento-per-minute=${APP_RATE_LIMIT_SEGUIMIENTO_PER_MINUTE:10}
 app.uploads.path=${APP_UPLOADS_DIR:./var/uploads/obra-fotos}
+app.tracking-code.pepper=${APP_TRACKING_CODE_PEPPER:}
 spring.profiles.default=prod
 spring.jpa.hibernate.ddl-auto=validate
 spring.flyway.enabled=true

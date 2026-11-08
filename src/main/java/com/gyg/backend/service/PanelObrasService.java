@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 public class PanelObrasService {
@@ -32,6 +31,7 @@ public class PanelObrasService {
     private final FotoObraRepository fotoRepository;
     private final AuditoriaEventoRepository auditRepository;
     private final ObraPhotoStorageService photoStorage;
+    private final TrackingCodeService trackingCodeService;
 
     public PanelObrasService(
             ObraRepository obraRepository,
@@ -39,13 +39,15 @@ public class PanelObrasService {
             UsuarioRepository usuarioRepository,
             FotoObraRepository fotoRepository,
             AuditoriaEventoRepository auditRepository,
-            ObraPhotoStorageService photoStorage) {
+            ObraPhotoStorageService photoStorage,
+            TrackingCodeService trackingCodeService) {
         this.obraRepository = obraRepository;
         this.assignmentRepository = assignmentRepository;
         this.usuarioRepository = usuarioRepository;
         this.fotoRepository = fotoRepository;
         this.auditRepository = auditRepository;
         this.photoStorage = photoStorage;
+        this.trackingCodeService = trackingCodeService;
     }
 
     @Transactional(readOnly = true)
@@ -74,13 +76,14 @@ public class PanelObrasService {
         requireEngineerOrAdmin(actor);
         Obra obra = new Obra();
         applyRequest(obra, request);
-        obra.setCodigoSeguimiento(UUID.randomUUID().toString().toUpperCase());
+        TrackingCodeService.GeneratedTrackingCode generatedCode = trackingCodeService.generate();
+        obra.setCodigoHash(generatedCode.hash());
         Obra saved = obraRepository.saveAndFlush(obra);
         if (actor.getRol() == Rol.INGENIERO) {
             assignmentRepository.save(new ObraIngeniero(saved, actor, actor.getFirebaseUid()));
         }
         audit(actor, "OBRA_CREADA", saved.getId(), ip);
-        return toResponse(saved);
+        return toResponse(saved, generatedCode.value());
     }
 
     @Transactional
@@ -238,6 +241,10 @@ public class PanelObrasService {
     }
 
     private ObraResponse toResponse(Obra obra) {
+        return toResponse(obra, null);
+    }
+
+    private ObraResponse toResponse(Obra obra, String trackingCode) {
         List<HitoObraResponse> hitos = obra.getHitos().stream()
                 .map(hito -> new HitoObraResponse(
                         hito.getId(), hito.getNombre(), hito.getDescripcion(),
@@ -252,7 +259,7 @@ public class PanelObrasService {
                 .toList();
         return new ObraResponse(
                 obra.getId(), obra.getNombreObra(), obra.getCliente(), obra.getClienteId(),
-                obra.getCategoria(), obra.getEstado(), obra.getPorcentajeAvance(), hitos, fotos);
+                obra.getCategoria(), obra.getEstado(), obra.getPorcentajeAvance(), hitos, fotos, trackingCode);
     }
 
     public record StoredImage(byte[] content, String contentType) {

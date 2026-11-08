@@ -36,6 +36,8 @@ app:
     credentials-json: ${FIREBASE_CREDENTIALS_JSON:}
   auth:
     admin-emails: ${APP_ADMIN_EMAILS:}
+  tracking-code:
+    pepper: ${APP_TRACKING_CODE_PEPPER:}
   swagger:
     public: ${APP_SWAGGER_PUBLIC:false}
   security:

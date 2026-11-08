@@ -14,8 +14,9 @@ import java.util.List;
 @Repository
 public interface ObraRepository extends JpaRepository<Obra, Long> {
 
-    @Query("SELECT o FROM Obra o LEFT JOIN FETCH o.fotos WHERE o.codigoSeguimiento = :codigo")
-    Optional<Obra> findByCodigoSeguimientoWithFotos(@Param("codigo") String codigo);
+    @Query("SELECT DISTINCT o FROM Obra o LEFT JOIN FETCH o.fotos "
+            + "WHERE o.codigoHash = :codigoHash AND o.eliminadaEn IS NULL")
+    Optional<Obra> findByCodigoHashWithFotosAndHitos(@Param("codigoHash") String codigoHash);
 
     List<Obra> findAllByEliminadaEnIsNullOrderByIdDesc();
 

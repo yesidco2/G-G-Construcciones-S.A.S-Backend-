@@ -26,6 +26,7 @@ El backend sirve de API REST para un frontend desarrollado en React.
    - `DB_USER`: usuario de PostgreSQL
    - `DB_PASSWORD`: contraseña de PostgreSQL
    - `APP_CORS_ALLOWED_ORIGINS`: orígenes de frontend separados por comas; en producción no se permiten orígenes locales por defecto.
+   - `APP_TRACKING_CODE_PEPPER`: valor aleatorio de al menos 32 bytes, necesario para generar y verificar códigos de seguimiento. Guárdalo en el gestor de secretos; no lo compartas ni lo cambies después de migrar la base de datos.
    - `SPRING_PROFILES_ACTIVE=dev` solo para desarrollo local; añade orígenes localhost y carga datos demostrativos.
 
    Para producción en GitHub Pages, agrega el origen del sitio, por ejemplo `https://<usuario>.github.io`, a `APP_CORS_ALLOWED_ORIGINS`.
@@ -94,7 +95,7 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 | **GET** | `/api/servicios` | Retorna los servicios ofrecidos organizados por bloque (`CIVIL` o `SST`). |
 | **GET** | `/api/datos-legales` | Devuelve el NIT y la dirección física de la empresa. |
 | **GET** | `/api/proyectos` | Retorna el portafolio de proyectos. Opcionalmente filtrable por query param `?categoria=CIVIL` o `?categoria=SST`. |
-| **GET** | `/api/obras/seguimiento/{codigo}` | Busca una obra por su código de acceso único (comparado en texto plano). Si es válido, retorna el avance y fotos del proyecto. |
+| **POST** | `/api/obras/seguimiento` | Recibe `{ "codigo": "..." }` y retorna solo el nombre, avance, hitos y fotos. Los códigos nuevos son aleatorios de alta entropía; la base de datos almacena únicamente su HMAC-SHA256. |
 | **POST** | `/api/contacto` | Recibe y valida `{ nombre, empresa, correo, telefono, tipoServicio, mensaje }`. Guarda la solicitud en BD y retorna 201. |
 | **POST** | `/api/chat` | Recibe `{ pregunta }`, procesa una respuesta automática basada en palabras clave de normativas SST, la registra en base de datos y la retorna. |
 | **GET** | `/api/riesgos/labores` | Retorna la lista de actividades/labores críticas de seguridad laboral. |
@@ -102,7 +103,7 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 | **GET** | `/api/politicas-ambientales` | Devuelve la lista de políticas y compromisos de mitigación ambiental de la empresa. |
 
 ### Prueba de Seguimiento de Proyecto
-El `DataLoader` precarga obras y fotos si la tabla de obras está vacía. Códigos disponibles:
+En el perfil `dev`, `DataLoader` precarga obras y fotos si la tabla de obras está vacía. Los códigos de demostración disponibles son:
 
 | Obra | Código | Avance |
 |---|---|---:|
@@ -111,7 +112,7 @@ El `DataLoader` precarga obras y fotos si la tabla de obras está vacía. Códig
 | Subestación Energía Norte | `GG-2026-00307` | 100% |
 | Programa SST Corredor Sur | `GYG-CIVIL-001` | 40% |
 
-Ejemplo: `GET /api/obras/seguimiento/GYG-CIVIL-001`. El código de seguimiento se compara en texto plano.
+Ejemplo: `POST /api/obras/seguimiento` con el cuerpo `{"codigo":"GYG-CIVIL-001"}`. Al migrar los códigos existentes, Flyway requiere `APP_TRACKING_CODE_PEPPER` y reemplaza los valores en texto plano por HMAC.
 
 ---
 

@@ -206,16 +206,38 @@ class GygControllerIntegrationTest {
 
     @Test
     void shouldReturnSeededProjectTrackingAndNotFoundForUnknownCode() throws Exception {
-        mockMvc.perform(get("/api/obras/seguimiento/GG-2026-00125"))
+        mockMvc.perform(post("/api/obras/seguimiento")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codigo\":\"GG-2026-00125\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.porcentajeAvance").value(74))
-                .andExpect(jsonPath("$.fotos", hasSize(3)));
+                .andExpect(jsonPath("$.fotos", hasSize(3)))
+                .andExpect(jsonPath("$.hitos").isArray());
 
-        mockMvc.perform(get("/api/obras/seguimiento/NO-EXISTE"))
+        mockMvc.perform(post("/api/obras/seguimiento")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codigo\":\"NO-EXISTE\"}"))
                 .andExpect(status().isNotFound());
 
-        mockMvc.perform(get("/api/obras/seguimiento/ab"))
+        mockMvc.perform(post("/api/obras/seguimiento")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codigo\":\"ab\"}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldApplyFailedTrackingCodeLimit() throws Exception {
+        String request = "{\"codigo\":\"INVALID-TRACKING-CODE-234567890123\"}";
+        for (int attempt = 0; attempt < 5; attempt++) {
+            mockMvc.perform(post("/api/obras/seguimiento")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(request))
+                    .andExpect(status().isNotFound());
+        }
+        mockMvc.perform(post("/api/obras/seguimiento")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isTooManyRequests());
     }
 
     @Test

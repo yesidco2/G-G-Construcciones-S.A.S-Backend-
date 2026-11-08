@@ -79,6 +79,7 @@ public class SecurityConfig {
                     }
                     authorize.requestMatchers("/api/auth/captcha/verify").permitAll()
                             .requestMatchers("/api/auth/**").authenticated()
+                            .requestMatchers(HttpMethod.POST, "/api/obras/seguimiento").permitAll()
                             .requestMatchers("/api/admin/autorizados/**", "/api/admin/usuarios/**")
                             .hasRole("ADMIN")
                             .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "INGENIERO")

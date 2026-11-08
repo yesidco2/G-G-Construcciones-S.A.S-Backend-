@@ -3,6 +3,8 @@ package com.gyg.backend.controller;
 import com.gyg.backend.dto.*;
 import com.gyg.backend.service.GygService;
 import com.gyg.backend.service.RateLimitService;
+import com.gyg.backend.service.TrackingCodeService;
+import com.gyg.backend.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -27,6 +29,9 @@ public class GygController {
 
     @Autowired
     private RateLimitService rateLimitService;
+
+    @Autowired
+    private TrackingCodeService trackingCodeService;
 
     @Value("${app.rate-limit.contacto-per-hour:5}")
     private int contactoPerHour;
@@ -89,15 +94,25 @@ public class GygController {
         return ResponseEntity.ok(gygService.getProyectos(categoria));
     }
 
-    @GetMapping("/obras/seguimiento/{codigo}")
-    @Operation(summary = "Consultar el seguimiento de una obra y su galeria de fotos por codigo de acceso")
+    @PostMapping("/obras/seguimiento")
+    @Operation(summary = "Consultar el seguimiento de una obra por código de acceso")
     public ResponseEntity<SeguimientoObraDTO> getSeguimientoObra(
-            @PathVariable("codigo") String codigo,
+            @RequestBody SeguimientoRequest request,
             HttpServletRequest httpRequest) {
         rateLimitService.check(
                 "seguimiento", httpRequest, seguimientoPerMinute, Duration.ofMinutes(1),
                 "Has alcanzado el limite de consultas de seguimiento. Intenta nuevamente en un minuto.");
-        return ResponseEntity.ok(gygService.getSeguimientoProyecto(codigo));
+        String codigo = request == null ? null : request.getCodigo();
+        try {
+            return ResponseEntity.ok(gygService.getSeguimientoProyecto(codigo));
+        } catch (ResourceNotFoundException notFound) {
+            String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
+            rateLimitService.check(
+                    "seguimiento-fallido-" + trackingCodeService.hash(candidate),
+                    httpRequest, 5, Duration.ofMinutes(15),
+                    "Demasiados intentos de seguimiento. Intenta más tarde.");
+            throw notFound;
+        }
     }
 
     @GetMapping("/riesgos/labores")

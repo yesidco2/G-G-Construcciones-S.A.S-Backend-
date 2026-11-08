@@ -98,8 +98,9 @@ class PanelObrasServiceTest {
     }
 
     private Obra obra(Long id) {
-        Obra obra = new Obra("Proyecto", "TEST-CODE-123", "EN_PROGRESO", 1L, 50);
+        Obra obra = new Obra("Proyecto", "EN_PROGRESO", 1L, 50);
         obra.setId(id);
+        obra.setCodigoHash("test-code-hash");
         return obra;
     }
 }

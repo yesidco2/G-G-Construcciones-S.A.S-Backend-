@@ -17,8 +17,8 @@ public class Obra {
     @Column(name = "nombre_obra", nullable = false)
     private String nombreObra;
 
-    @Column(name = "codigo_seguimiento", nullable = false)
-    private String codigoSeguimiento;
+    @Column(name = "codigo_hash", nullable = false, unique = true, length = 64)
+    private String codigoHash;
 
     @Column(nullable = false)
     private String estado = "EN_PROGRESO";
@@ -47,15 +47,14 @@ public class Obra {
     public Obra() {
     }
 
-    public Obra(String nombreObra, String codigoSeguimiento, String estado, Long clienteId) {
+    public Obra(String nombreObra, String estado, Long clienteId) {
         this.nombreObra = nombreObra;
-        this.codigoSeguimiento = codigoSeguimiento;
         this.estado = estado;
         this.clienteId = clienteId;
     }
 
-    public Obra(String nombreObra, String codigoSeguimiento, String estado, Long clienteId, Integer porcentajeAvance) {
-        this(nombreObra, codigoSeguimiento, estado, clienteId);
+    public Obra(String nombreObra, String estado, Long clienteId, Integer porcentajeAvance) {
+        this(nombreObra, estado, clienteId);
         this.porcentajeAvance = porcentajeAvance;
     }
 
@@ -75,12 +74,12 @@ public class Obra {
         this.nombreObra = nombreObra;
     }
 
-    public String getCodigoSeguimiento() {
-        return codigoSeguimiento;
+    public String getCodigoHash() {
+        return codigoHash;
     }
 
-    public void setCodigoSeguimiento(String codigoSeguimiento) {
-        this.codigoSeguimiento = codigoSeguimiento;
+    public void setCodigoHash(String codigoHash) {
+        this.codigoHash = codigoHash;
     }
 
     public String getEstado() {
