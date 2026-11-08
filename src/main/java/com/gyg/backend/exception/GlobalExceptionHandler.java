@@ -1,6 +1,7 @@
 package com.gyg.backend.exception;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -94,7 +95,9 @@ public class GlobalExceptionHandler {
         body.put("error", "Too Many Requests");
         body.put("message", ex.getMessage());
         body.put("path", request.getDescription(false).replace("uri=", ""));
-        return new ResponseEntity<>(body, HttpStatus.TOO_MANY_REQUESTS);
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(ex.getRetryAfterSeconds()))
+                .body(body);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

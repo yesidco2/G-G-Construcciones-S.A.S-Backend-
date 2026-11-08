@@ -19,6 +19,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -237,7 +238,8 @@ class GygControllerIntegrationTest {
         mockMvc.perform(post("/api/obras/seguimiento")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request))
-                .andExpect(status().isTooManyRequests());
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"));
     }
 
     @Test

@@ -27,6 +27,7 @@ El backend sirve de API REST para un frontend desarrollado en React.
    - `DB_PASSWORD`: contraseña de PostgreSQL
    - `APP_CORS_ALLOWED_ORIGINS`: orígenes de frontend separados por comas; en producción no se permiten orígenes locales por defecto.
    - `APP_TRACKING_CODE_PEPPER`: valor aleatorio de al menos 32 bytes, necesario para generar y verificar códigos de seguimiento. Guárdalo en el gestor de secretos; no lo compartas ni lo cambies después de migrar la base de datos.
+   - `APP_TRUSTED_PROXIES`: expresión regular de las direcciones de los proxies inversos que realmente controlas. Spring usa `RemoteIpValve` y nunca se toma directamente la primera entrada de `X-Forwarded-For`. Por defecto no se confía en ningún proxy.
    - `SPRING_PROFILES_ACTIVE=dev` solo para desarrollo local; añade orígenes localhost y carga datos demostrativos.
 
    Para producción en GitHub Pages, agrega el origen del sitio, por ejemplo `https://<usuario>.github.io`, a `APP_CORS_ALLOWED_ORIGINS`.
