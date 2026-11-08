@@ -59,7 +59,8 @@ public class AdministracionService {
 
     @Transactional
     public void eliminarAutorizacion(Long id, Usuario actor) {
-        AdministradorAutorizado autorizado = autorizadoRepository.findById(id)
+        lockAdministratorState();
+        AdministradorAutorizado autorizado = autorizadoRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la autorización solicitada."));
         if (esMismoCorreo(autorizado.getEmail(), actor.getEmail())) {
             throw new ConflictException("No puedes eliminar tu propia autorización de administrador.");
@@ -99,7 +100,8 @@ public class AdministracionService {
             throw new IllegalArgumentException("Debes indicar al menos el rol o el estado activo.");
         }
 
-        Usuario usuario = usuarioRepository.findById(id)
+        lockAdministratorState();
+        Usuario usuario = usuarioRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el usuario solicitado."));
         Rol rolActual = usuario.getRol();
         boolean activoActual = usuario.isActivo();
@@ -172,6 +174,11 @@ public class AdministracionService {
         if (usuariosAdmin <= 0 && autorizacionesAdmin <= 0) {
             throw new ConflictException("La operación no está permitida porque dejaría el sistema sin administradores activos.");
         }
+    }
+
+    private void lockAdministratorState() {
+        usuarioRepository.findActiveByRolForUpdate(Rol.ADMIN);
+        autorizadoRepository.findActiveByRolForUpdate(Rol.ADMIN);
     }
 
     private static String normalizarEmail(String email) {

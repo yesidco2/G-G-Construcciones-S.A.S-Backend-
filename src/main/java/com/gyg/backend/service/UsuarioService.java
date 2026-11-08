@@ -8,6 +8,7 @@ import com.gyg.backend.repository.AdministradorAutorizadoRepository;
 import com.gyg.backend.repository.UsuarioRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
 import java.util.Map;
@@ -24,15 +25,18 @@ public class UsuarioService {
         this.administradorRepository = administradorRepository;
     }
 
+    @Transactional
     public Usuario obtenerOCrear(FirebaseToken token) {
         return obtenerOCrear(token.getUid(), token.getEmail(), token.isEmailVerified(), token.getClaims());
     }
 
+    @Transactional
     Usuario obtenerOCrear(String uid, String email, boolean emailVerificado, Map<String, Object> claims) {
         return usuarioRepository.findByFirebaseUid(uid)
                 .map(usuario -> {
-                    aplicarDatosDelToken(usuario, email, emailVerificado, claims);
-                    return usuarioRepository.save(usuario);
+                    return aplicarDatosDelToken(usuario, email, emailVerificado, claims)
+                            ? usuarioRepository.save(usuario)
+                            : usuario;
                 })
                 .orElseGet(() -> crearORecuperarCarrera(uid, email, emailVerificado, claims));
     }
@@ -47,20 +51,19 @@ public class UsuarioService {
         } catch (DataIntegrityViolationException exception) {
             return usuarioRepository.findByFirebaseUid(uid)
                     .map(existing -> {
-                        aplicarDatosDelToken(existing, email, emailVerificado, claims);
-                        return usuarioRepository.save(existing);
+                        return aplicarDatosDelToken(existing, email, emailVerificado, claims)
+                                ? usuarioRepository.save(existing)
+                                : existing;
                     })
                     .orElseThrow(() -> exception);
         }
     }
 
-    private void aplicarDatosDelToken(
+    private boolean aplicarDatosDelToken(
             Usuario usuario, String email, boolean emailVerificado, Map<String, Object> claims) {
         String normalizedEmail = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
-        usuario.setEmail(normalizedEmail);
-        usuario.setEmailVerificado(emailVerificado);
         Object name = claims.get("name");
-        usuario.setNombre(name instanceof String value ? value : null);
+        String nombre = name instanceof String value ? value : null;
 
         Rol rol = emailVerificado && normalizedEmail != null
                 ? administradorRepository.findByEmail(normalizedEmail)
@@ -68,6 +71,16 @@ public class UsuarioService {
                         .map(AdministradorAutorizado::getRol)
                         .orElse(Rol.USUARIO)
                 : Rol.USUARIO;
-        usuario.setRol(rol);
+        boolean changed = !java.util.Objects.equals(usuario.getEmail(), normalizedEmail)
+                || usuario.isEmailVerificado() != emailVerificado
+                || !java.util.Objects.equals(usuario.getNombre(), nombre)
+                || usuario.getRol() != rol;
+        if (changed) {
+            usuario.setEmail(normalizedEmail);
+            usuario.setEmailVerificado(emailVerificado);
+            usuario.setNombre(nombre);
+            usuario.setRol(rol);
+        }
+        return changed;
     }
 }

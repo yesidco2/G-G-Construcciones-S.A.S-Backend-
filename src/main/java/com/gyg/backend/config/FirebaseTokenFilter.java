@@ -16,8 +16,15 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.HexFormat;
 import java.util.List;
 
 public class FirebaseTokenFilter extends OncePerRequestFilter {
@@ -26,6 +33,10 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
 
     private final FirebaseAuth firebaseAuth;
     private final UsuarioService usuarioService;
+    private final Cache<String, FirebaseToken> verifiedTokens = Caffeine.newBuilder()
+            .maximumSize(100_000)
+            .expireAfterWrite(Duration.ofSeconds(60))
+            .build();
 
     public FirebaseTokenFilter(FirebaseAuth firebaseAuth, UsuarioService usuarioService) {
         this.firebaseAuth = firebaseAuth;
@@ -42,11 +53,18 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
             String idToken = authorization.substring(7).trim();
             if (!idToken.isEmpty()) {
                 try {
-                    FirebaseToken token = firebaseAuth.verifyIdToken(idToken, true);
+                    boolean privilegedRequest = requiresRevocationCheck(request);
+                    String tokenKey = tokenFingerprint(idToken);
+                    FirebaseToken token = privilegedRequest
+                            ? firebaseAuth.verifyIdToken(idToken, true)
+                            : cachedOrVerify(idToken, tokenKey);
                     Usuario usuario = usuarioService.obtenerOCrear(token);
                     if (usuario.isActivo()) {
                         request.setAttribute(
                                 VerifiedSessionService.FirebaseTokenFilterAttribute.NAME, token);
+                        if (privilegedRequest) {
+                            verifiedTokens.put(tokenKey, token);
+                        }
                         UsernamePasswordAuthenticationToken authentication =
                                 new UsernamePasswordAuthenticationToken(
                                         usuario,
@@ -54,15 +72,49 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
                                         List.of(new SimpleGrantedAuthority("ROLE_" + usuario.getRol().name())));
                         SecurityContextHolder.getContext().setAuthentication(authentication);
                     }
-                } catch (FirebaseAuthException ignored) {
+                } catch (FirebaseAuthException exception) {
+                    logger.warn("Falló la verificación del token de Firebase");
                     SecurityContextHolder.clearContext();
                 } catch (RuntimeException exception) {
                     logger.warn(
-                            "No se pudo resolver el usuario del token de Firebase; la solicitud continuará como anónima");
+                            "No se pudo verificar el token o resolver el usuario; la solicitud continuará como anónima");
                     SecurityContextHolder.clearContext();
                 }
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private FirebaseToken cachedOrVerify(String idToken, String tokenKey) throws FirebaseAuthException {
+        FirebaseToken cached = verifiedTokens.getIfPresent(tokenKey);
+        if (cached != null && !isExpired(cached)) {
+            return cached;
+        }
+        verifiedTokens.invalidate(tokenKey);
+        FirebaseToken verified = firebaseAuth.verifyIdToken(idToken, false);
+        verifiedTokens.put(tokenKey, verified);
+        return verified;
+    }
+
+    private static boolean requiresRevocationCheck(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.equals("/api/panel") || path.startsWith("/api/panel/")
+                || path.equals("/api/admin") || path.startsWith("/api/admin/");
+    }
+
+    private static boolean isExpired(FirebaseToken token) {
+        Object expiresAt = token.getClaims().get("exp");
+        return expiresAt instanceof Number value
+                && value.longValue() * 1000L <= System.currentTimeMillis();
+    }
+
+    private static String tokenFingerprint(String token) {
+        try {
+            byte[] fingerprint = MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(fingerprint);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("No se pudo calcular la huella del token.", exception);
+        }
     }
 }

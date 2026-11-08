@@ -38,7 +38,8 @@ class UsuarioServiceTest {
         usuario.setEmail("admin@example.com");
 
         when(usuarioRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(usuario));
-        when(usuarioRepository.save(any(Usuario.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(usuarioRepository.save(any(Usuario.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -84,6 +85,20 @@ class UsuarioServiceTest {
                 "firebase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
 
         assertEquals(Rol.INGENIERO, result.getRol());
+    }
+
+    @Test
+    void doesNotSaveUserWhenVerifiedTokenDataHasNotChanged() {
+        usuario.setEmail("admin@example.com");
+        usuario.setNombre("Admin");
+        usuario.setEmailVerificado(true);
+        usuario.setRol(Rol.USUARIO);
+        when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
+
+        usuarioService.obtenerOCrear(
+                "firebase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
+
+        verify(usuarioRepository, never()).save(any(Usuario.class));
     }
 
     private static AdministradorAutorizado authorizedAs(Rol rol, boolean active) {

@@ -54,6 +54,9 @@ public class GygService {
     @Autowired
     private TrackingCodeService trackingCodeService;
 
+    @Autowired
+    private ContactCooldownLockService contactCooldownLockService;
+
     // 1. GET /api/institucional
     public InstitucionalDTO getInstitucional() {
         return new InstitucionalDTO(
@@ -106,6 +109,7 @@ public class GygService {
 
         LocalDateTime now = LocalDateTime.now();
         String normalizedEmail = correo.toLowerCase(Locale.ROOT);
+        contactCooldownLockService.lockByEmail(normalizedEmail);
         LocalDateTime lastContact = solicitudContactoRepository
                 .findTopByCorreoOrderByFechaDesc(normalizedEmail)
                 .map(SolicitudContacto::getFecha)

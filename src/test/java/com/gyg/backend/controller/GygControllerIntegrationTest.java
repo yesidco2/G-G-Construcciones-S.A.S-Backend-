@@ -10,10 +10,14 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -98,6 +102,34 @@ class GygControllerIntegrationTest {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.message").value(
                         "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos."));
+    }
+
+    @Test
+    void shouldEnforceContactCooldownForConcurrentRequests() throws Exception {
+        ContactoRequest request = new ContactoRequest(
+                "Ana Gomez", "G&G Construcciones", uniqueEmail(), null,
+                "Consultoría SST", "Necesito asesoría en seguridad");
+        String body = objectMapper.writeValueAsString(request);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<MvcResult> first = executor.submit(() -> mockMvc.perform(post("/api/contacto")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andReturn());
+            Future<MvcResult> second = executor.submit(() -> mockMvc.perform(post("/api/contacto")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andReturn());
+
+            int firstStatus = first.get().getResponse().getStatus();
+            int secondStatus = second.get().getResponse().getStatus();
+            org.junit.jupiter.api.Assertions.assertEquals(
+                    1, (firstStatus == 201 ? 1 : 0) + (secondStatus == 201 ? 1 : 0));
+            org.junit.jupiter.api.Assertions.assertEquals(
+                    1, (firstStatus == 429 ? 1 : 0) + (secondStatus == 429 ? 1 : 0));
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
