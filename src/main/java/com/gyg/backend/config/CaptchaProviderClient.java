@@ -2,6 +2,8 @@ package com.gyg.backend.config;
 
 import com.gyg.backend.service.CaptchaProviderUnavailableException;
 import com.gyg.backend.service.CaptchaVerificationClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -15,6 +17,7 @@ import java.util.Map;
 @Component
 public class CaptchaProviderClient implements CaptchaVerificationClient {
 
+    private static final Logger logger = LoggerFactory.getLogger(CaptchaProviderClient.class);
     private static final String TURNSTILE_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
     private static final String RECAPTCHA_URL = "https://www.google.com/recaptcha/api/siteverify";
 
@@ -51,6 +54,8 @@ public class CaptchaProviderClient implements CaptchaVerificationClient {
                     url, new org.springframework.http.HttpEntity<>(form, headers()), Map.class);
             return result != null && Boolean.TRUE.equals(result.get("success"));
         } catch (RestClientException exception) {
+            logger.warn("CAPTCHA provider verification request failed due to {}.",
+                    exception.getClass().getSimpleName());
             throw new CaptchaProviderUnavailableException();
         }
     }

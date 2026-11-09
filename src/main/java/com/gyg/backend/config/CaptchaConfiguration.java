@@ -5,8 +5,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.web.client.RestOperations;
 
 import java.time.Duration;
@@ -24,7 +22,6 @@ public class CaptchaConfiguration {
 
     @Bean
     InitializingBean validateCaptchaSettings(
-            Environment environment,
             @Value("${app.captcha.enabled:true}") boolean enabled,
             @Value("${app.captcha.provider:turnstile}") String provider,
             @Value("${app.captcha.secret:}") String secret) {
@@ -32,11 +29,9 @@ public class CaptchaConfiguration {
             if (!provider.equals("turnstile") && !provider.equals("recaptcha")) {
                 throw new IllegalStateException("app.captcha.provider debe ser turnstile o recaptcha.");
             }
-            boolean production = environment.acceptsProfiles(Profiles.of("prod"))
-                    || environment.getActiveProfiles().length == 0;
-            if (enabled && production && secret.isBlank()) {
+            if (enabled && secret.isBlank()) {
                 throw new IllegalStateException(
-                        "app.captcha.secret es obligatorio cuando CAPTCHA está habilitado en producción.");
+                        "APP_CAPTCHA_SECRET es obligatorio cuando CAPTCHA está habilitado.");
             }
         };
     }

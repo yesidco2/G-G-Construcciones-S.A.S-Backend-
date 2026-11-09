@@ -59,6 +59,7 @@ public class CaptchaController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("status", 401, "error", "No autorizado"));
         }
+
         if (captchaEnabled && (sessionRequest == null
                 || !captchaService.consumeTicket(sessionRequest.ticket(), request))) {
             return captchaRequired();
