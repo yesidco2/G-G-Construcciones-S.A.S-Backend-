@@ -86,7 +86,11 @@ public class SecurityConfig {
                                 "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
                                 .authenticated();
                     }
-                    authorize.requestMatchers("/api/auth/captcha/verify").permitAll()
+                    authorize.requestMatchers(
+                                    HttpMethod.POST,
+                                    "/api/auth/captcha/verify",
+                                    "/api/auth/password-reset")
+                            .permitAll()
                             .requestMatchers("/api/auth/**").authenticated()
                             .requestMatchers(HttpMethod.POST, "/api/obras/seguimiento").permitAll()
                     .requestMatchers("/api/admin/consultas-chat").hasRole("ADMIN")

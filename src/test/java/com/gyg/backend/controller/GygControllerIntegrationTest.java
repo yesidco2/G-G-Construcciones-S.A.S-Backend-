@@ -89,6 +89,16 @@ class GygControllerIntegrationTest {
     }
 
     @Test
+    void shouldExposePasswordResetEndpointWithoutFirebaseLogin() throws Exception {
+        mockMvc.perform(post("/api/auth/password-reset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"admin@example.com\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.path").value("/api/auth/password-reset"));
+    }
+
+    @Test
     @WithMockUser(roles = "INGENIERO")
     void shouldDenyIngenieroFromAuthorizationManagementEndpoints() throws Exception {
         mockMvc.perform(get("/api/admin/autorizados"))

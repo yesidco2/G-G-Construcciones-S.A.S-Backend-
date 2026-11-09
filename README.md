@@ -28,7 +28,9 @@ El backend sirve de API REST para un frontend desarrollado en React.
    - `APP_CORS_ALLOWED_ORIGINS`: orígenes de frontend separados por comas; en producción no se permiten orígenes locales por defecto.
    - `APP_TRACKING_CODE_PEPPER`: valor aleatorio de al menos 32 bytes, necesario para generar y verificar códigos de seguimiento. Guárdalo en el gestor de secretos; no lo compartas ni lo cambies después de migrar la base de datos.
    - `APP_TRUSTED_PROXIES`: expresión regular de las direcciones de los proxies inversos que realmente controlas. Spring usa `RemoteIpValve` y nunca se toma directamente la primera entrada de `X-Forwarded-For`. Por defecto no se confía en ningún proxy.
-   - `APP_CAPTCHA_ENABLED`, `APP_CAPTCHA_PROVIDER` y `APP_CAPTCHA_SECRET`: configuración de CAPTCHA para los formularios; cuando está habilitado, el secreto es obligatorio en producción.
+   - `APP_CAPTCHA_ENABLED`, `APP_CAPTCHA_PROVIDER` y `APP_CAPTCHA_SECRET`: configuración de CAPTCHA para los formularios; la clave secreta de Turnstile es obligatoria siempre que CAPTCHA esté habilitado.
+   - `FIREBASE_WEB_API_KEY`: clave API usada por el backend para solicitar a Firebase el correo de restablecimiento. Si la clave `VITE_FIREBASE_API_KEY` del frontend está restringida por HTTP referrer, crea una clave aparte para el backend sin esa restricción de aplicación y restríngela a la Identity Toolkit API en Google Cloud.
+   - `APP_RATE_LIMIT_PASSWORD_RESET_PER_HOUR`: máximo de solicitudes de restablecimiento por IP por hora (5 por defecto).
    - `APP_MAX_REQUEST_BODY_SIZE`: máximo para cuerpos HTTP no multipart (`1MB` por defecto).
    - `APP_MULTIPART_MAX_FILE_SIZE` y `APP_MULTIPART_MAX_REQUEST_SIZE`: límites de subida multipart (`5MB` por archivo y `25MB` por petición, por defecto).
    - `APP_PRIVACY_POLICY_VERSION`, `APP_CHAT_LOG_RETENTION_MONTHS` y `APP_CHAT_LOG_RETENTION_CRON`: versión de consentimiento y política de retención de consultas del chat.
@@ -52,7 +54,7 @@ Desde PowerShell, ejecuta el script de desarrollo en la raíz del proyecto:
 .\run-dev.ps1
 ```
 
-Antes de usarlo, revisa `run-dev.ps1` y ajusta `FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`, `APP_ADMIN_EMAILS`, `DB_URL` y `DB_USER` a tu entorno. El script comprueba que exista el archivo de credenciales de Firebase y solicita la contraseña de PostgreSQL al ejecutarse; no la guarda en el archivo. La base de datos indicada en `DB_URL` debe existir.
+Antes de usarlo, revisa `run-dev.ps1` y ajusta `FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`, `APP_ADMIN_EMAILS`, `DB_URL` y `DB_USER` a tu entorno. El script comprueba que exista el archivo de credenciales de Firebase y solicita la contraseña de PostgreSQL al ejecutarse; no la guarda en el archivo. Si `APP_CAPTCHA_SECRET` no está definida, solicita de forma oculta la Secret key de Turnstile. Si `FIREBASE_WEB_API_KEY` no está definida, la solicita opcionalmente. Si la clave web del frontend tiene una restricción de HTTP referrer, usa una clave API separada para el backend, sin esa restricción de aplicación y limitada a Identity Toolkit API. La base de datos indicada en `DB_URL` debe existir.
 Activa el perfil `dev` en la terminal antes de iniciarlo para habilitar los datos de demostración y los orígenes localhost:
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "dev"
@@ -103,6 +105,7 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 | **POST** | `/api/obras/seguimiento` | Recibe `{ "codigo": "..." }` y retorna solo el nombre, avance, hitos y fotos. Los códigos nuevos son aleatorios de alta entropía; la base de datos almacena únicamente su HMAC-SHA256. |
 | **POST** | `/api/contacto` | Recibe `{ nombre, empresa, correo, telefono, tipoServicio, mensaje, aceptaPolitica }`. El consentimiento es obligatorio; cuando CAPTCHA está activo, requiere `X-Captcha-Token`. Guarda la solicitud y retorna 201. |
 | **POST** | `/api/newsletter` | Registra una suscripción con `{ correo, aceptaPolitica }`; usa `X-Captcha-Token` cuando CAPTCHA está activo. |
+| **POST** | `/api/auth/password-reset` | Solicita a Firebase un correo de restablecimiento; público, protegido por `X-Captcha-Token` y limitado por IP. Responde de forma genérica para no revelar si el correo está autorizado o registrado. |
 | **POST** | `/api/chat` | Recibe `{ pregunta }`, procesa una respuesta automática basada en palabras clave de normativas SST, la registra en base de datos y la retorna. |
 | **GET** | `/api/admin/consultas-chat?page=0&size=20` | Lista registros de chat paginados; requiere usuario administrador con sesión verificada. |
 | **GET** | `/api/riesgos/labores` | Retorna la lista de actividades/labores críticas de seguridad laboral. |
