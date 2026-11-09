@@ -42,7 +42,6 @@ El backend sirve de API REST para un frontend desarrollado en React.
 
 > No publiques credenciales de base de datos. `application.properties.example` documenta la configuración sin incluir secretos.
 > Copia `.env.example` como `.env` para preparar variables localmente y completa valores solo en ese archivo ignorado por Git o en el gestor de secretos del despliegue. En producción, Hibernate usa `ddl-auto=validate`; Flyway crea el esquema en instalaciones nuevas y toma como baseline version 1 los esquemas existentes no vacíos, sin recrear sus tablas ni borrar sus datos.
-> Para que el escaneo OWASP de GitHub Actions consulte NVD, configura `NVD_API_KEY` como secreto del repositorio.
 
 ---
 
