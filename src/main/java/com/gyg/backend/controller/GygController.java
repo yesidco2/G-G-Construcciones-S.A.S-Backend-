@@ -80,7 +80,7 @@ public class GygController {
                 "contacto", httpRequest, contactoPerHour, Duration.ofHours(1),
                 "Has alcanzado el limite de solicitudes de contacto. Intenta mas tarde.");
         if (captchaEnabled) {
-            captchaService.verifySubmissionToken(captchaToken, httpRequest);
+            captchaService.verifySubmissionToken(captchaToken, "contacto", httpRequest);
         }
         if (request.getSitioWeb() != null && !request.getSitioWeb().isBlank()) {
             return ResponseEntity.status(HttpStatus.CREATED).body(

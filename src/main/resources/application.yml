@@ -35,6 +35,7 @@ app:
     enabled: ${APP_CAPTCHA_ENABLED:true}
     provider: ${APP_CAPTCHA_PROVIDER:turnstile}
     secret: ${APP_CAPTCHA_SECRET:}
+    expected-hostnames: ${APP_CAPTCHA_EXPECTED_HOSTNAMES:}
     ticket-ttl-seconds: ${APP_CAPTCHA_TICKET_TTL_SECONDS:120}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}

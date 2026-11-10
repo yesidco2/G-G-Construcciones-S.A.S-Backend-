@@ -44,7 +44,7 @@ public class PasswordResetController {
         rateLimitService.check(
                 "password-reset", httpRequest, requestLimit, Duration.ofHours(1),
                 "Demasiadas solicitudes. Intenta nuevamente más tarde.");
-        captchaService.verifySubmissionToken(captchaToken, httpRequest);
+        captchaService.verifySubmissionToken(captchaToken, "recuperar_contraseña", httpRequest);
         passwordResetService.request(request.email());
         return ResponseEntity.accepted().build();
     }

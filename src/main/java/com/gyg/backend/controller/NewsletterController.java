@@ -48,7 +48,7 @@ public class NewsletterController {
                 "newsletter", httpRequest, requestLimit, Duration.ofHours(1),
                 "Has alcanzado el límite de suscripciones. Intenta más tarde.");
         if (captchaEnabled) {
-            captchaService.verifySubmissionToken(captchaToken, httpRequest);
+            captchaService.verifySubmissionToken(captchaToken, "newsletter", httpRequest);
         }
         newsletterService.subscribe(request);
         return ResponseEntity.noContent().build();

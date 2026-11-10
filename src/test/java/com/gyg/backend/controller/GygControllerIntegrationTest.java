@@ -89,14 +89,25 @@ class GygControllerIntegrationTest {
     }
 
     @Test
-    void shouldExposePasswordResetEndpointWithoutFirebaseLogin() throws Exception {
+        void shouldRejectPasswordResetWithoutCaptchaToken() throws Exception {
         mockMvc.perform(post("/api/auth/password-reset")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"admin@example.com\"}"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.status").value(503))
+                                .andExpect(status().isForbidden())
+                                .andExpect(jsonPath("$.status").value(403))
+                                .andExpect(jsonPath("$.message").value("La verificación CAPTCHA no fue válida."))
                 .andExpect(jsonPath("$.path").value("/api/auth/password-reset"));
     }
+
+        @Test
+        void shouldRejectNonTextCaptchaTokenWithGenericForbiddenResponse() throws Exception {
+                mockMvc.perform(post("/api/auth/captcha/verify")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("{\"captchaToken\":123}"))
+                                .andExpect(status().isForbidden())
+                                .andExpect(jsonPath("$.status").value(403))
+                                .andExpect(jsonPath("$.message").value("La verificación CAPTCHA no fue válida."));
+        }
 
     @Test
     @WithMockUser(roles = "INGENIERO")

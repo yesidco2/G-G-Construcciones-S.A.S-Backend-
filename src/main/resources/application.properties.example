@@ -8,6 +8,7 @@ app.cors.allowed-origins=${APP_CORS_ALLOWED_ORIGINS:}
 app.captcha.enabled=${APP_CAPTCHA_ENABLED:true}
 app.captcha.provider=${APP_CAPTCHA_PROVIDER:turnstile}
 app.captcha.secret=${APP_CAPTCHA_SECRET:}
+app.captcha.expected-hostnames=${APP_CAPTCHA_EXPECTED_HOSTNAMES:}
 app.captcha.ticket-ttl-seconds=${APP_CAPTCHA_TICKET_TTL_SECONDS:120}
 app.firebase.enabled=${FIREBASE_ENABLED:true}
 app.firebase.project-id=${FIREBASE_PROJECT_ID:}

@@ -94,7 +94,7 @@ public class GlobalExceptionHandler {
             CaptchaService.InvalidCaptchaException ex,
             WebRequest request) {
         return createErrorResponse(
-                HttpStatus.BAD_REQUEST, "Bad Request", "La verificación CAPTCHA no fue válida.", request);
+                HttpStatus.FORBIDDEN, "Forbidden", "La verificación CAPTCHA no fue válida.", request);
     }
 
     @ExceptionHandler(CaptchaProviderUnavailableException.class)
@@ -102,8 +102,7 @@ public class GlobalExceptionHandler {
             CaptchaProviderUnavailableException ex,
             WebRequest request) {
         return createErrorResponse(
-                HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
-                "No fue posible verificar CAPTCHA. Intenta nuevamente.", request);
+                HttpStatus.FORBIDDEN, "Forbidden", "La verificación CAPTCHA no fue válida.", request);
     }
 
     @ExceptionHandler(PasswordResetUnavailableException.class)

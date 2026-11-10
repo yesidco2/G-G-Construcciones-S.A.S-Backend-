@@ -22,6 +22,8 @@ import java.util.Map;
 public class CaptchaService {
 
     private static final int MAX_TICKETS = 100_000;
+    private static final int MAX_USED_TOKENS = 100_000;
+    private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
 
     private final CaptchaVerificationClient verificationClient;
     private final int ticketTtlSeconds;
@@ -29,6 +31,7 @@ public class CaptchaService {
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
     private final Map<String, Ticket> tickets = new LinkedHashMap<>();
+    private final Map<String, Instant> usedTokens = new LinkedHashMap<>();
 
     @Autowired
     public CaptchaService(
@@ -52,24 +55,15 @@ public class CaptchaService {
         this.clock = clock;
     }
 
-    public void verifySubmissionToken(String captchaToken, HttpServletRequest request) {
-        if (!enabled) {
-            throw new CaptchaProviderUnavailableException();
-        }
-        if (captchaToken == null || captchaToken.isBlank()
-                || !verificationClient.verify(captchaToken, clientIp(request))) {
-            throw new InvalidCaptchaException();
-        }
+    public void verifySubmissionToken(
+            String captchaToken, String expectedAction, HttpServletRequest request) {
+        verifyToken(captchaToken, expectedAction, request);
     }
 
-    public TicketResponse verifyAndIssue(String captchaToken, HttpServletRequest request) {
-        if (!enabled) {
-            throw new CaptchaProviderUnavailableException();
-        }
+    public TicketResponse verifyAndIssue(
+            String captchaToken, String expectedAction, HttpServletRequest request) {
         String clientIp = clientIp(request);
-        if (!verificationClient.verify(captchaToken, clientIp)) {
-            throw new InvalidCaptchaException();
-        }
+        verifyToken(captchaToken, expectedAction, request);
 
         byte[] secret = new byte[32];
         secureRandom.nextBytes(secret);
@@ -80,11 +74,48 @@ public class CaptchaService {
         synchronized (tickets) {
             purgeExpiredTickets();
             if (tickets.size() >= MAX_TICKETS) {
-                throw new CaptchaProviderUnavailableException();
+                throw new InvalidCaptchaException();
             }
             tickets.put(ticketHash, new Ticket(bindingHash, expiresAt));
         }
         return new TicketResponse(ticket, ticketTtlSeconds);
+    }
+
+    private void verifyToken(String captchaToken, String expectedAction, HttpServletRequest request) {
+        if (!enabled || captchaToken == null || captchaToken.isBlank() || captchaToken.length() > 2048) {
+            throw new InvalidCaptchaException();
+        }
+
+        String tokenHash = sha256(captchaToken);
+        Instant expiresAt = clock.instant().plus(TOKEN_TTL);
+        synchronized (usedTokens) {
+            purgeExpiredTokens();
+            if (usedTokens.containsKey(tokenHash) || usedTokens.size() >= MAX_USED_TOKENS) {
+                throw new InvalidCaptchaException();
+            }
+            usedTokens.put(tokenHash, expiresAt);
+        }
+
+        try {
+            if (!verificationClient.verify(captchaToken, clientIp(request), expectedAction)) {
+                throw new InvalidCaptchaException();
+            }
+        } catch (RuntimeException exception) {
+            synchronized (usedTokens) {
+                usedTokens.remove(tokenHash, expiresAt);
+            }
+            throw new InvalidCaptchaException();
+        }
+    }
+
+    private void purgeExpiredTokens() {
+        Instant now = clock.instant();
+        Iterator<Instant> iterator = usedTokens.values().iterator();
+        while (iterator.hasNext()) {
+            if (!iterator.next().isAfter(now)) {
+                iterator.remove();
+            }
+        }
     }
 
     public boolean consumeTicket(String ticket, HttpServletRequest request) {
