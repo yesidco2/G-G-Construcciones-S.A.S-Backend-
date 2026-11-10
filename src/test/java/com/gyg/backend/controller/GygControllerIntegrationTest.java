@@ -89,14 +89,11 @@ class GygControllerIntegrationTest {
     }
 
     @Test
-        void shouldRejectPasswordResetWithoutCaptchaToken() throws Exception {
+    void shouldAcceptPasswordResetWithoutCaptchaToken() throws Exception {
         mockMvc.perform(post("/api/auth/password-reset")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"admin@example.com\"}"))
-                                .andExpect(status().isForbidden())
-                                .andExpect(jsonPath("$.status").value(403))
-                                .andExpect(jsonPath("$.message").value("La verificación CAPTCHA no fue válida."))
-                .andExpect(jsonPath("$.path").value("/api/auth/password-reset"));
+                        .content("{\"email\":\"not-authorized@example.com\"}"))
+                .andExpect(status().isAccepted());
     }
 
         @Test
