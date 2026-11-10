@@ -102,7 +102,7 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 | **GET** | `/api/datos-legales` | Devuelve el NIT y la dirección física de la empresa. |
 | **GET** | `/api/proyectos` | Retorna el portafolio de proyectos. Opcionalmente filtrable por query param `?categoria=CIVIL` o `?categoria=SST`. |
 | **POST** | `/api/obras/seguimiento` | Recibe `{ "codigo": "..." }` y retorna solo el nombre, avance, hitos y fotos. Los códigos nuevos son aleatorios de alta entropía; la base de datos almacena únicamente su HMAC-SHA256. |
-| **POST** | `/api/contacto` | Recibe `{ nombre, empresa, correo, telefono, tipoServicio, mensaje, aceptaPolitica }`. El consentimiento es obligatorio; cuando CAPTCHA está activo, requiere `X-Captcha-Token`. Guarda la solicitud y retorna 201. |
+| **POST** | `/api/contacto` | Recibe `{ nombre, empresa, correo, telefono, tipoServicio, mensaje, aceptaPolitica, politicaVersion, sitioWeb }`. Requiere nombre, mensaje, consentimiento y al menos correo o teléfono; empresa, correo, teléfono y versión de política aceptan cadena vacía como ausente. El honeypot `sitioWeb` debe enviarse vacío. Cuando CAPTCHA está activo, requiere `X-Captcha-Token`. |
 | **POST** | `/api/newsletter` | Registra una suscripción con `{ correo, aceptaPolitica }`; usa `X-Captcha-Token` cuando CAPTCHA está activo. |
 | **POST** | `/api/auth/password-reset` | Solicita a Firebase un correo de restablecimiento; público, protegido por `X-Captcha-Token` y limitado por IP. Responde de forma genérica para no revelar si el correo está autorizado o registrado. |
 | **POST** | `/api/chat` | Recibe `{ pregunta }`, procesa una respuesta automática basada en palabras clave de normativas SST, la registra en base de datos y la retorna. |
@@ -114,6 +114,8 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 ### Consentimiento y retención de datos
 
 Las solicitudes de contacto y las suscripciones al newsletter deben incluir `aceptaPolitica: true`. La versión vigente se configura con `APP_PRIVACY_POLICY_VERSION` y se guarda junto con la fecha del consentimiento. La verificación CAPTCHA de contacto y newsletter se controla con `APP_CAPTCHA_ENABLED`, `APP_CAPTCHA_PROVIDER` y `APP_CAPTCHA_SECRET`; si está habilitada, el token del proveedor se envía en el encabezado `X-Captcha-Token`.
+
+El campo `tipoServicio` de contacto admite los valores del selector del frontend: `Obra Civil`, `Consultoría SST`, `Interventoría Técnica` y `Capacitación Integral`.
 
 Los registros del chat se eliminan automáticamente según `APP_CHAT_LOG_RETENTION_MONTHS` (12 meses por defecto), en el horario definido por `APP_CHAT_LOG_RETENTION_CRON`.
 

@@ -101,8 +101,8 @@ public class GygService {
         if (nombre == null || nombre.isEmpty()) {
             throw new IllegalArgumentException("El nombre es requerido");
         }
-        if (correo == null || correo.isEmpty()) {
-            throw new IllegalArgumentException("El correo es requerido");
+        if ((correo == null || correo.isEmpty()) && (telefono == null || telefono.isEmpty())) {
+            throw new IllegalArgumentException("Se requiere correo o teléfono");
         }
         if (mensaje == null || mensaje.isEmpty()) {
             throw new IllegalArgumentException("El mensaje es requerido");
@@ -115,15 +115,17 @@ public class GygService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        String normalizedEmail = correo.toLowerCase(Locale.ROOT);
-        contactCooldownLockService.lockByEmail(normalizedEmail);
-        LocalDateTime lastContact = solicitudContactoRepository
+        String normalizedEmail = correo == null ? null : correo.toLowerCase(Locale.ROOT);
+        if (normalizedEmail != null) {
+            contactCooldownLockService.lockByEmail(normalizedEmail);
+            LocalDateTime lastContact = solicitudContactoRepository
                 .findTopByCorreoOrderByFechaDesc(normalizedEmail)
                 .map(SolicitudContacto::getFecha)
                 .orElse(null);
-        if (lastContact != null && lastContact.plusMinutes(CONTACT_COOLDOWN_MINUTES).isAfter(now)) {
+            if (lastContact != null && lastContact.plusMinutes(CONTACT_COOLDOWN_MINUTES).isAfter(now)) {
             throw new TooManyRequestsException(
-                    "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos.");
+                "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos.");
+            }
         }
 
         String tipoServicio = request.getTipoServicio() == null || request.getTipoServicio().trim().isEmpty()

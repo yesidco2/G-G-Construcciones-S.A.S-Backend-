@@ -118,6 +118,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleUnreadableMessage(
             HttpMessageNotReadableException ex,
             WebRequest request) {
+        if (request.getDescription(false).contains("/api/contacto")) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "codigo", "CONTACTO_VALIDATION_ERROR",
+                    "mensaje", "La solicitud contiene campos inválidos.",
+                    "camposInvalidos", java.util.List.of(Map.of(
+                            "campo", "cuerpo", "motivo", "formato inválido"))));
+        }
         return createErrorResponse(
                 HttpStatus.BAD_REQUEST, "Bad Request", "El cuerpo de la solicitud no tiene un formato valido.", request);
     }

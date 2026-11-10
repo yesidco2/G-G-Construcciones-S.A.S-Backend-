@@ -17,7 +17,6 @@ public class SolicitudContacto {
 
     private String empresa;
 
-    @Column(nullable = false)
     private String correo;
 
     private String telefono;

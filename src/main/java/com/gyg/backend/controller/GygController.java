@@ -9,6 +9,8 @@ import com.gyg.backend.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,13 +22,19 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api")
 @Validated
 @Tag(name = "G&G Construcciones API", description = "Servicios REST para el portal de G&G Construcciones (Ingenieria Civil y Consultoria SST)")
 public class GygController {
+
+        private static final java.util.regex.Pattern CONTACT_LINK_PATTERN =
+            java.util.regex.Pattern.compile("(?i)(https?://|www\\.)");
 
     @Autowired
     private GygService gygService;
@@ -39,6 +47,9 @@ public class GygController {
 
     @Autowired
     private CaptchaService captchaService;
+
+    @Autowired
+    private Validator validator;
 
     @Value("${app.captcha.enabled:true}")
     private boolean captchaEnabled;
@@ -72,22 +83,74 @@ public class GygController {
 
     @PostMapping("/contacto")
     @Operation(summary = "Registrar una solicitud de contacto o cotizacion desde el formulario del portal")
-    public ResponseEntity<ContactoResponse> crearContacto(
-            @Valid @RequestBody ContactoRequest request,
+    public ResponseEntity<?> crearContacto(
+            @RequestBody ContactoRequest request,
             @RequestHeader(name = "X-Captcha-Token", required = false) String captchaToken,
             HttpServletRequest httpRequest) {
-        rateLimitService.check(
-                "contacto", httpRequest, contactoPerHour, Duration.ofHours(1),
-                "Has alcanzado el limite de solicitudes de contacto. Intenta mas tarde.");
-        if (captchaEnabled) {
-            captchaService.verifySubmissionToken(captchaToken, "contacto", httpRequest);
-        }
         if (request.getSitioWeb() != null && !request.getSitioWeb().isBlank()) {
             return ResponseEntity.status(HttpStatus.CREATED).body(
                     new ContactoResponse(0L));
         }
+
+        if (captchaEnabled) {
+            captchaService.verifySubmissionToken(captchaToken, "contacto", httpRequest);
+        }
+        if (!Boolean.TRUE.equals(request.getAceptaPolitica())) {
+            return contactoValidationError(List.of(
+                    Map.of("campo", "aceptaPolitica", "motivo", "debe ser aceptada")));
+        }
+
+        rateLimitService.check(
+                "contacto", httpRequest, contactoPerHour, Duration.ofHours(1),
+                "Has alcanzado el limite de solicitudes de contacto. Intenta mas tarde.");
+
+        request.normalizeOptionalFields();
+        Set<ConstraintViolation<ContactoRequest>> violations = validator.validate(request);
+        List<Map<String, String>> invalidFields = new ArrayList<>();
+        for (ConstraintViolation<ContactoRequest> violation : violations) {
+            invalidFields.add(Map.of(
+                    "campo", violation.getPropertyPath().toString(),
+                    "motivo", violation.getMessage()));
+        }
+        if (request.getCorreo() == null && request.getTelefono() == null) {
+            invalidFields.add(Map.of(
+                    "campo", "correo",
+                    "motivo", "debe proporcionar correo o teléfono"));
+        }
+        if (request.getMensaje() != null && countLinks(request.getMensaje()) > 2) {
+            invalidFields.add(Map.of(
+                    "campo", "mensaje",
+                    "motivo", "no puede contener más de 2 enlaces"));
+        }
+        if (request.getTipoServicio() != null
+            && !ContactoRequest.TIPOS_SERVICIO_PERMITIDOS.contains(request.getTipoServicio())) {
+            invalidFields.add(Map.of(
+                "campo", "tipoServicio",
+                "motivo", "el valor no está permitido"));
+        }
+        if (!invalidFields.isEmpty()) {
+            return contactoValidationError(invalidFields);
+        }
+
         gygService.crearContacto(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(new ContactoResponse(0L));
+    }
+
+        private static ResponseEntity<Map<String, Object>> contactoValidationError(
+            List<Map<String, String>> invalidFields) {
+        return ResponseEntity.badRequest().body(Map.of(
+                "codigo", "CONTACTO_VALIDATION_ERROR",
+                "mensaje", "La solicitud contiene campos inválidos.",
+                "camposInvalidos", invalidFields));
+    }
+
+    private static int countLinks(String value) {
+        var matcher = CONTACT_LINK_PATTERN.matcher(value);
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
     }
 
     @PostMapping("/chat")

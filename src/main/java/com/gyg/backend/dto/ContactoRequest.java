@@ -1,13 +1,20 @@
 package com.gyg.backend.dto;
 
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import java.util.List;
+
 public class ContactoRequest {
+
+    public static final List<String> TIPOS_SERVICIO_PERMITIDOS = List.of(
+            "Obra Civil",
+            "Consultoría SST",
+            "Interventoría Técnica",
+            "Capacitación Integral"
+    );
 
     @NotBlank(message = "El nombre es requerido")
     @Size(min = 2, max = 100, message = "El nombre debe tener entre 2 y 100 caracteres")
@@ -18,11 +25,10 @@ public class ContactoRequest {
     @Pattern(regexp = "^[^<>]*$", message = "La empresa contiene caracteres no permitidos")
     private String empresa;
 
-    @NotBlank(message = "El correo es requerido")
     @Size(max = 254, message = "El correo no puede superar 254 caracteres")
     @Email(message = "El correo debe ser un email valido")
     @Pattern(
-            regexp = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$",
+            regexp = "^$|^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}$",
             message = "El correo debe incluir un dominio valido"
     )
     private String correo;
@@ -31,10 +37,6 @@ public class ContactoRequest {
     private String telefono;
 
     @NotBlank(message = "El tipo de servicio es requerido")
-    @Pattern(
-            regexp = "^(Obra Civil|Consultor\\u00eda SST|Interventor\\u00eda T\\u00e9cnica|Capacitaci\\u00f3n Integral)$",
-            message = "El tipo de servicio no es valido"
-    )
     private String tipoServicio;
 
     @NotBlank(message = "El mensaje es requerido")
@@ -44,9 +46,10 @@ public class ContactoRequest {
 
     private String sitioWeb;
 
-    @NotNull(message = "Debes aceptar la política de tratamiento de datos")
-    @AssertTrue(message = "Debes aceptar la política de tratamiento de datos")
     private Boolean aceptaPolitica;
+
+    @Size(max = 50, message = "La versión de la política no puede superar 50 caracteres")
+    private String politicaVersion;
 
     public ContactoRequest() {
     }
@@ -122,5 +125,27 @@ public class ContactoRequest {
 
     public void setAceptaPolitica(Boolean aceptaPolitica) {
         this.aceptaPolitica = aceptaPolitica;
+    }
+
+    public String getPoliticaVersion() {
+        return politicaVersion;
+    }
+
+    public void setPoliticaVersion(String politicaVersion) {
+        this.politicaVersion = politicaVersion;
+    }
+
+    public void normalizeOptionalFields() {
+        empresa = normalizeOptional(empresa);
+        correo = normalizeOptional(correo);
+        telefono = normalizeOptional(telefono);
+        politicaVersion = normalizeOptional(politicaVersion);
+    }
+
+    private static String normalizeOptional(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

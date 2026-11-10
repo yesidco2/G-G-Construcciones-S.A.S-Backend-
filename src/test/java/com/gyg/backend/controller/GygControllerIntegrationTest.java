@@ -179,6 +179,89 @@ class GygControllerIntegrationTest {
     }
 
     @Test
+    void shouldAcceptFrontendContactoPayloadIncludingEmptyHoneypot() throws Exception {
+        String email = uniqueEmail();
+        String payload = "{\"nombre\":\"Ana Gómez\",\"correo\":\"" + email
+                + "\",\"telefono\":\"+57 300 123 4567\",\"empresa\":\"G&G Construcciones\","
+                + "\"tipoServicio\":\"Consultoría SST\",\"mensaje\":\"Necesito una cotización de servicios\","
+                + "\"aceptaPolitica\":true,\"politicaVersion\":\"2026-01\",\"sitioWeb\":\"\"}";
+
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated());
+
+        var saved = solicitudContactoRepository.findTopByCorreoOrderByFechaDesc(email).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals("CONSULTORÍA SST", saved.getTipoServicio());
+    }
+
+    @Test
+    void shouldReturnFieldErrorWhenConsentIsMissingBeforeRateLimiting() throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contactPayload(uniqueEmail(), "3001234567", "Obra Civil",
+                                "Necesito una cotización", false)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("CONTACTO_VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.mensaje").value("La solicitud contiene campos inválidos."))
+                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("aceptaPolitica"));
+    }
+
+    @Test
+    void shouldRequireEmailOrPhoneAndAllowEmptyOptionalStrings() throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contactPayload("", "", "Obra Civil", "Necesito una cotización", true)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.camposInvalidos[*].campo",
+                        org.hamcrest.Matchers.hasItem("correo")));
+
+        String email = uniqueEmail();
+        String payload = "{\"nombre\":\"Ana Gómez\",\"correo\":\"" + email
+                + "\",\"telefono\":\"\",\"empresa\":\"\",\"tipoServicio\":\"Obra Civil\","
+                + "\"mensaje\":\"Necesito una cotización\",\"aceptaPolitica\":true,"
+                + "\"politicaVersion\":\"\",\"sitioWeb\":\"\"}";
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void shouldAcceptPhoneOnlyContact() throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contactPayload("", "3001234567", "Obra Civil",
+                                "Necesito una cotización", true)))
+                .andExpect(status().isCreated());
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                solicitudContactoRepository.findAll().stream()
+                        .anyMatch(contact -> contact.getCorreo() == null
+                                && "3001234567".equals(contact.getTelefono())));
+    }
+
+    @Test
+    void shouldReturnFieldErrorForUnknownServiceAndOversizedMessage() throws Exception {
+        mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contactPayload(uniqueEmail(), "3001234567", "Servicio no listado",
+                                "Necesito una cotización", true)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("tipoServicio"));
+
+        String longMessage = "x".repeat(1501);
+        var result = mockMvc.perform(post("/api/contacto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(contactPayload(uniqueEmail(), "3001234567", "Obra Civil", longMessage, true)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("mensaje"))
+                .andReturn();
+        org.junit.jupiter.api.Assertions.assertFalse(
+                result.getResponse().getContentAsString().contains(longMessage));
+    }
+
+    @Test
     void shouldEnforceContactCooldownForConcurrentRequests() throws Exception {
         ContactoRequest request = new ContactoRequest(
                 "Ana Gomez", "G&G Construcciones", uniqueEmail(), null,
@@ -212,11 +295,13 @@ class GygControllerIntegrationTest {
         ContactoRequest request = new ContactoRequest(
                 "Ana Gomez", "G&G Construcciones", "correo-invalido", "3001234567", "SST", "Solicitud"
         );
+        request.setAceptaPolitica(true);
 
         mockMvc.perform(post("/api/contacto")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("correo"));
     }
 
     @Test
@@ -227,7 +312,8 @@ class GygControllerIntegrationTest {
                                 + "\"correo\":\"" + uniqueEmail() + "\",\"telefono\":\"\","
                                 + "\"tipoServicio\":\"Obra Civil\","
                                 + "\"mensaje\":\"Necesito una cotizacion\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("aceptaPolitica"));
     }
 
     @Test
@@ -290,10 +376,9 @@ class GygControllerIntegrationTest {
     void shouldReturnCreatedWithZeroIdForHoneypotWithoutSaving() throws Exception {
         String correo = uniqueEmail();
         ContactoRequest request = new ContactoRequest(
-                "Ana Gomez", "G&G Construcciones", correo, null,
-                "Consultoría SST", "Necesito asesoría en seguridad");
-        request.setAceptaPolitica(true);
-        request.setSitioWeb("https://spam.example");
+                "", "G&G Construcciones", correo, null,
+                "Servicio no listado", "x");
+        request.setSitioWeb("relleno");
 
         mockMvc.perform(post("/api/contacto")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -311,10 +396,8 @@ class GygControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nombre\":"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.message").isNotEmpty())
-                .andExpect(jsonPath("$.path").value("/api/contacto"));
+                .andExpect(jsonPath("$.codigo").value("CONTACTO_VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("cuerpo"));
     }
 
     @Test
@@ -326,7 +409,8 @@ class GygControllerIntegrationTest {
                                 + "\"tipoServicio\":\"Obra Civil\",\"mensaje\":\"Necesito cotizacion\","
                                 + "\"aceptaPolitica\":true,\"id\":123}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("El cuerpo de la solicitud no tiene un formato valido."));
+                .andExpect(jsonPath("$.codigo").value("CONTACTO_VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("cuerpo"));
     }
 
     @Test
@@ -407,7 +491,8 @@ class GygControllerIntegrationTest {
                                 + "\"mensaje\":\"https://uno.example https://dos.example www.tres.example\","
                                 + "\"aceptaPolitica\":true}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("La solicitud contiene datos no válidos."));
+                .andExpect(jsonPath("$.mensaje").value("La solicitud contiene campos inválidos."))
+                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("mensaje"));
     }
 
     @Test
@@ -495,11 +580,20 @@ class GygControllerIntegrationTest {
     }
 
     private void assertContactoBadRequest(ContactoRequest request) throws Exception {
+                request.setAceptaPolitica(true);
         mockMvc.perform(post("/api/contacto")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
+
+        private String contactPayload(
+                        String email, String phone, String service, String message, boolean consent) {
+                return "{\"nombre\":\"Ana Gómez\",\"empresa\":\"\",\"correo\":\"" + email
+                                + "\",\"telefono\":\"" + phone + "\",\"tipoServicio\":\"" + service
+                                + "\",\"mensaje\":\"" + message + "\",\"aceptaPolitica\":" + consent
+                                + ",\"politicaVersion\":\"2026-01\",\"sitioWeb\":\"\"}";
+        }
 
     private String uniqueEmail() {
         return "contact-" + UUID.randomUUID() + "@example.com";
