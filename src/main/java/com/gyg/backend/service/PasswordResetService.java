@@ -1,50 +1,43 @@
 package com.gyg.backend.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.firebase.auth.AuthErrorCode;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserRecord;
 import com.gyg.backend.model.Rol;
 import com.gyg.backend.repository.AdministradorAutorizadoRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestOperations;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.io.IOException;
-import java.net.URI;
 import java.util.Locale;
-import java.util.Map;
 
 @Service
 public class PasswordResetService {
 
     private static final Logger logger = LoggerFactory.getLogger(PasswordResetService.class);
-    private static final String FIREBASE_PASSWORD_RESET_URL =
-            "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode";
 
     private final AdministradorAutorizadoRepository authorizationRepository;
-    private final RestOperations restOperations;
-    private final ObjectMapper objectMapper;
-    private final String firebaseWebApiKey;
+    private final ObjectProvider<FirebaseAuth> firebaseAuthProvider;
+    private final CustomEmailService emailService;
 
     public PasswordResetService(
             AdministradorAutorizadoRepository authorizationRepository,
-            RestOperations restOperations,
-            ObjectMapper objectMapper,
-            @Value("${app.firebase.web-api-key:}") String firebaseWebApiKey) {
+            ObjectProvider<FirebaseAuth> firebaseAuthProvider,
+            CustomEmailService emailService) {
         this.authorizationRepository = authorizationRepository;
-        this.restOperations = restOperations;
-        this.objectMapper = objectMapper;
-        this.firebaseWebApiKey = firebaseWebApiKey;
+        this.firebaseAuthProvider = firebaseAuthProvider;
+        this.emailService = emailService;
     }
 
     public void request(String email) {
         String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
+        FirebaseAuth firebaseAuth = firebaseAuthProvider.getIfAvailable();
+        if (firebaseAuth == null || !emailService.isConfigured()) {
+            throw new PasswordResetUnavailableException();
+        }
+
         boolean authorized = authorizationRepository.findByEmail(normalizedEmail)
                 .filter(authorization -> authorization.isActivo()
                         && authorization.getRol() != Rol.USUARIO)
@@ -52,52 +45,24 @@ public class PasswordResetService {
         if (!authorized) {
             return;
         }
-        if (firebaseWebApiKey.isBlank()) {
-            logger.error("Firebase password reset is unavailable: FIREBASE_WEB_API_KEY is not configured.");
-            throw new PasswordResetUnavailableException();
-        }
 
-        URI uri = UriComponentsBuilder.fromUriString(FIREBASE_PASSWORD_RESET_URL)
-                .queryParam("key", firebaseWebApiKey)
-                .build()
-                .encode()
-                .toUri();
         try {
-            ResponseEntity<String> response = restOperations.postForEntity(uri, Map.of(
-                    "requestType", "PASSWORD_RESET",
-                    "email", normalizedEmail), String.class);
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new PasswordResetUnavailableException();
-            }
-        } catch (HttpClientErrorException exception) {
-            if (isNonActionableAccountError(exception)) {
+            UserRecord user = firebaseAuth.getUserByEmail(normalizedEmail);
+            if (user.isDisabled() || user.getEmail() == null || user.getEmail().isBlank()) {
                 return;
             }
-            logger.warn("Firebase password reset failed with HTTP status {} and error code {}.",
-                    exception.getStatusCode().value(), firebaseErrorCode(exception));
-            throw new PasswordResetUnavailableException();
-        } catch (RestClientException exception) {
-            logger.warn("Firebase password reset request failed due to {}.", exception.getClass().getSimpleName());
-            throw new PasswordResetUnavailableException();
-        }
-    }
-
-    private boolean isNonActionableAccountError(HttpClientErrorException exception) {
-        String code = firebaseErrorCode(exception);
-        return code.startsWith("EMAIL_NOT_FOUND")
-                || code.startsWith("USER_DISABLED");
-    }
-
-    private String firebaseErrorCode(HttpClientErrorException exception) {
-        if (exception.getStatusCode() != HttpStatus.BAD_REQUEST) {
-            return "HTTP_" + exception.getStatusCode().value();
-        }
-        try {
-            JsonNode error = objectMapper.readTree(exception.getResponseBodyAsByteArray()).path("error");
-            String code = error.path("message").asText();
-            return code.isBlank() ? "UNKNOWN" : code;
-        } catch (IOException exceptionDuringParsing) {
-            return "UNPARSEABLE_RESPONSE";
+            String actionLink = firebaseAuth.generatePasswordResetLink(user.getEmail());
+            emailService.sendPasswordReset(user.getEmail(), user.getDisplayName(), actionLink);
+        } catch (FirebaseAuthException exception) {
+            AuthErrorCode errorCode = exception.getAuthErrorCode();
+            if (errorCode != AuthErrorCode.EMAIL_NOT_FOUND
+                    && errorCode != AuthErrorCode.USER_NOT_FOUND
+                    && errorCode != AuthErrorCode.USER_DISABLED) {
+                logger.warn("Firebase password reset link generation failed with code {}.", errorCode);
+            }
+        } catch (EmailDeliveryException exception) {
+            logger.error("Password reset email delivery failed ({}).",
+                    exception.getClass().getSimpleName());
         }
     }
 }

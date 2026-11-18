@@ -1,97 +1,132 @@
 package com.gyg.backend.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.UserRecord;
 import com.gyg.backend.model.AdministradorAutorizado;
 import com.gyg.backend.model.Rol;
 import com.gyg.backend.repository.AdministradorAutorizadoRepository;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestOperations;
+import org.springframework.beans.factory.ObjectProvider;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class PasswordResetServiceTest {
 
     private static final String EMAIL = "engineer@example.com";
+    private static final String ACTION_LINK = "https://example.firebaseapp.com/__/auth/action?mode=reset";
 
     @Test
-    void shouldSendFirebaseResetEmailToAuthorizedAccount() {
+    void shouldGenerateOfficialResetLinkAndSendCustomEmailForAuthorizedAccount() throws Exception {
         AdministradorAutorizadoRepository repository = mock(AdministradorAutorizadoRepository.class);
-        RestOperations restOperations = mock(RestOperations.class);
-        AdministradorAutorizado authorization = authorization();
-        when(repository.findByEmail(EMAIL)).thenReturn(Optional.of(authorization));
-        when(restOperations.postForEntity(any(java.net.URI.class), any(), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("{\"email\":\"" + EMAIL + "\"}"));
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        CustomEmailService emailService = configuredEmailService();
+        when(repository.findByEmail(EMAIL)).thenReturn(Optional.of(authorization()));
+        UserRecord user = user(false);
+        when(firebaseAuth.getUserByEmail(EMAIL)).thenReturn(user);
+        when(firebaseAuth.generatePasswordResetLink(EMAIL)).thenReturn(ACTION_LINK);
 
-        service(repository, restOperations, "public-api-key").request(" Engineer@Example.com ");
+        service(repository, firebaseAuth, emailService).request(" Engineer@Example.com ");
 
-        verify(restOperations).postForEntity(any(java.net.URI.class), eq(Map.of(
-                "requestType", "PASSWORD_RESET",
-                "email", EMAIL)), eq(String.class));
+        verify(firebaseAuth).generatePasswordResetLink(EMAIL);
+        verify(firebaseAuth).getUserByEmail(EMAIL);
+        verify(emailService).sendPasswordReset(EMAIL, "Engineer", ACTION_LINK);
     }
 
     @Test
     void shouldNotCallFirebaseForUnauthorizedAddress() {
         AdministradorAutorizadoRepository repository = mock(AdministradorAutorizadoRepository.class);
-        RestOperations restOperations = mock(RestOperations.class);
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
         when(repository.findByEmail(EMAIL)).thenReturn(Optional.empty());
 
-        assertDoesNotThrow(() -> service(repository, restOperations, "public-api-key").request(EMAIL));
-        verify(restOperations, never()).postForEntity(any(java.net.URI.class), any(), eq(String.class));
+        assertDoesNotThrow(() ->
+                service(repository, firebaseAuth, configuredEmailService()).request(EMAIL));
+        verifyNoInteractions(firebaseAuth);
     }
 
     @Test
-    void shouldNotRevealWhenFirebaseHasNoMatchingAccount() {
+    void shouldKeepFirebaseAccountErrorsGeneric() throws Exception {
         AdministradorAutorizadoRepository repository = mock(AdministradorAutorizadoRepository.class);
-        RestOperations restOperations = mock(RestOperations.class);
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        CustomEmailService emailService = configuredEmailService();
         when(repository.findByEmail(EMAIL)).thenReturn(Optional.of(authorization()));
-        when(restOperations.postForEntity(any(java.net.URI.class), any(), eq(String.class)))
-                .thenThrow(firebaseError("EMAIL_NOT_FOUND"));
+        when(firebaseAuth.getUserByEmail(EMAIL))
+                .thenThrow(mock(FirebaseAuthException.class));
 
-        assertDoesNotThrow(() -> service(repository, restOperations, "public-api-key").request(EMAIL));
+        assertDoesNotThrow(() -> service(repository, firebaseAuth, emailService).request(EMAIL));
+        verify(emailService).isConfigured();
+        verify(emailService, never()).sendPasswordReset(anyString(), any(), anyString());
     }
 
     @Test
-    void shouldFailExplicitlyWhenFirebaseConfigurationIsMissing() {
+    void shouldKeepSmtpFailuresGenericToPreventAccountEnumeration() throws Exception {
         AdministradorAutorizadoRepository repository = mock(AdministradorAutorizadoRepository.class);
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        CustomEmailService emailService = configuredEmailService();
         when(repository.findByEmail(EMAIL)).thenReturn(Optional.of(authorization()));
+        UserRecord user = user(false);
+        when(firebaseAuth.getUserByEmail(EMAIL)).thenReturn(user);
+        when(firebaseAuth.generatePasswordResetLink(EMAIL)).thenReturn(ACTION_LINK);
+        doThrow(new EmailDeliveryException()).when(emailService)
+                .sendPasswordReset(EMAIL, null, ACTION_LINK);
 
-        assertThrows(PasswordResetUnavailableException.class,
-                () -> service(repository, mock(RestOperations.class), "").request(EMAIL));
+        assertDoesNotThrow(() -> service(repository, firebaseAuth, emailService).request(EMAIL));
     }
 
     @Test
-    void shouldFailClosedWhenFirebaseCannotSendTheResetEmail() {
+    void shouldNotSendResetLinkToDisabledFirebaseAccount() throws Exception {
         AdministradorAutorizadoRepository repository = mock(AdministradorAutorizadoRepository.class);
-        RestOperations restOperations = mock(RestOperations.class);
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        CustomEmailService emailService = configuredEmailService();
         when(repository.findByEmail(EMAIL)).thenReturn(Optional.of(authorization()));
-        when(restOperations.postForEntity(any(java.net.URI.class), any(), eq(String.class)))
-                .thenThrow(new ResourceAccessException("Firebase unavailable"));
+        UserRecord user = user(true);
+        when(firebaseAuth.getUserByEmail(EMAIL)).thenReturn(user);
 
-        assertThrows(PasswordResetUnavailableException.class,
-                () -> service(repository, restOperations, "public-api-key").request(EMAIL));
+        assertDoesNotThrow(() -> service(repository, firebaseAuth, emailService).request(EMAIL));
+        verify(firebaseAuth, never()).generatePasswordResetLink(anyString());
+        verify(emailService, never()).sendPasswordReset(anyString(), any(), anyString());
+    }
+
+    @Test
+    void shouldFailExplicitlyWhenFirebaseOrSmtpConfigurationIsMissing() {
+        AdministradorAutorizadoRepository repository = mock(AdministradorAutorizadoRepository.class);
+        ObjectProvider<FirebaseAuth> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(null);
+
+        PasswordResetService service = new PasswordResetService(
+                repository, provider, mock(CustomEmailService.class));
+
+        assertThrows(PasswordResetUnavailableException.class, () -> service.request(EMAIL));
+        verifyNoInteractions(repository);
     }
 
     private static PasswordResetService service(
             AdministradorAutorizadoRepository repository,
-            RestOperations restOperations,
-            String apiKey) {
-        return new PasswordResetService(repository, restOperations, new ObjectMapper(), apiKey);
+            FirebaseAuth firebaseAuth,
+            CustomEmailService emailService) {
+        ObjectProvider<FirebaseAuth> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(firebaseAuth);
+        return new PasswordResetService(repository, provider, emailService);
+    }
+
+    private static CustomEmailService configuredEmailService() {
+        CustomEmailService emailService = mock(CustomEmailService.class);
+        when(emailService.isConfigured()).thenReturn(true);
+        return emailService;
+    }
+
+    private static UserRecord user(boolean disabled) {
+        UserRecord user = mock(UserRecord.class);
+        doReturn(EMAIL).when(user).getEmail();
+        doReturn("Engineer").when(user).getDisplayName();
+        doReturn(disabled).when(user).isDisabled();
+        return user;
     }
 
     private static AdministradorAutorizado authorization() {
@@ -100,12 +135,5 @@ class PasswordResetServiceTest {
         authorization.setRol(Rol.ADMIN);
         authorization.setActivo(true);
         return authorization;
-    }
-
-    private static HttpClientErrorException firebaseError(String errorCode) {
-        byte[] response = ("{\"error\":{\"message\":\"" + errorCode + "\"}}")
-                .getBytes(StandardCharsets.UTF_8);
-        return HttpClientErrorException.create(
-                HttpStatus.BAD_REQUEST, "Bad Request", HttpHeaders.EMPTY, response, StandardCharsets.UTF_8);
     }
 }
