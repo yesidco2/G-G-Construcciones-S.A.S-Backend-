@@ -64,7 +64,7 @@ class GygControllerIntegrationTest {
 
     @Test
     void shouldNeverSetCookiesOnApiResponses() throws Exception {
-        mockMvc.perform(get("/api/servicios"))
+        mockMvc.perform(get("/api/institucional"))
                 .andExpect(status().isOk())
                 .andExpect(header().doesNotExist("Set-Cookie"));
 
@@ -480,14 +480,11 @@ class GygControllerIntegrationTest {
     }
 
     @Test
-    void shouldValidateQueryAndPathParameters() throws Exception {
-        mockMvc.perform(get("/api/proyectos").param("categoria", "UNKNOWN"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("La solicitud contiene datos no válidos."));
-
-        mockMvc.perform(get("/api/riesgos/0"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("La solicitud contiene datos no válidos."));
+    void shouldValidateSeguimientoPhotoPath() throws Exception {
+        mockMvc.perform(post("/api/obras/seguimiento/fotos/0")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codigo\":\"codigo-invalido\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -541,24 +538,16 @@ class GygControllerIntegrationTest {
     }
 
     @Test
-    void shouldListServices() throws Exception {
-        mockMvc.perform(get("/api/servicios"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(org.hamcrest.Matchers.greaterThan(0))));
-    }
-
-    @Test
-    void shouldListCivilProjects() throws Exception {
-        Obra civilProject = new Obra("Proyecto Civil de Integración", "EN_PROGRESO", 1L, 10);
-        civilProject.setCodigoHash(trackingCodeService.generate().hash());
-        obraRepository.saveAndFlush(civilProject);
-
-        mockMvc.perform(get("/api/proyectos")
-                        .param("categoria", "CIVIL"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(org.hamcrest.Matchers.greaterThan(0))))
-                .andExpect(jsonPath("$[*].categoria",
-                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("CIVIL"))));
+    void shouldNotExposeReactStaticCatalogEndpoints() throws Exception {
+        for (String endpoint : new String[] {
+                "/api/servicios",
+                "/api/proyectos",
+                "/api/riesgos/labores",
+                "/api/riesgos/1",
+                "/api/politicas-ambientales"
+        }) {
+            mockMvc.perform(get(endpoint)).andExpect(status().isNotFound());
+        }
     }
 
     @Test
@@ -626,17 +615,6 @@ class GygControllerIntegrationTest {
                         }))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"));
-    }
-
-    @Test
-    void shouldListRiskLaborAndReturnLaborDetails() throws Exception {
-        mockMvc.perform(get("/api/riesgos/labores"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(org.hamcrest.Matchers.greaterThan(0))));
-
-        mockMvc.perform(get("/api/riesgos/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(1));
     }
 
     @Test

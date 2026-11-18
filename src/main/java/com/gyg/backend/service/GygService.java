@@ -32,15 +32,6 @@ public class GygService {
     private static final String DUMMY_TRACKING_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 
     @Autowired
-    private ServicioRepository servicioRepository;
-
-    @Autowired
-    private LaborRepository laborRepository;
-
-    @Autowired
-    private PoliticaAmbientalRepository politicaAmbientalRepository;
-
-    @Autowired
     private ObraRepository obraRepository;
 
     @Autowired
@@ -77,13 +68,6 @@ public class GygService {
                 "Ser en el 2030 la empresa lider en integracion de servicios de ingenieria y consultoria de seguridad laboral, reconocida por su innovacion, confiabilidad y compromiso con la vida.",
                 Arrays.asList("Seguridad y Salud en el Trabajo", "Integridad", "Calidad Excepcional", "Sostenibilidad", "Compromiso")
         );
-    }
-
-    // 2. GET /api/servicios
-    public List<ServicioDTO> getServicios() {
-        return servicioRepository.findAll().stream()
-                .map(s -> new ServicioDTO(s.getId(), s.getTitulo(), s.getDescripcion(), s.getBloque()))
-                .collect(Collectors.toList());
     }
 
     // 3. GET /api/datos-legales
@@ -179,24 +163,6 @@ public class GygService {
         return new ChatResponse(pregunta, respuesta, timestamp);
     }
 
-    // 6. GET /api/proyectos
-    public List<ProyectoDTO> getProyectos(String categoria) {
-        String categoriaFiltro = categoria == null ? null : categoria.trim().toUpperCase(Locale.ROOT);
-
-        return obraRepository.findAllByEliminadaEnIsNullOrderByIdDesc().stream()
-                .filter(obra -> categoriaFiltro == null || categoriaFiltro.equalsIgnoreCase(inferirCategoria(obra.getNombreObra())))
-                .map(obra -> new ProyectoDTO(
-                        obra.getId(),
-                        obra.getNombreObra(),
-                        obra.getCategoria() == null || obra.getCategoria().isBlank()
-                                ? inferirCategoria(obra.getNombreObra()) : obra.getCategoria(),
-                        construirDescripcion(obra.getNombreObra()),
-                        construirMetricaDestacada(obra.getNombreObra()),
-                        construirImagen(obra.getNombreObra())
-                ))
-                .collect(Collectors.toList());
-    }
-
     // 7. POST /api/obras/seguimiento
     public SeguimientoObraDTO getSeguimientoProyecto(String codigo) {
         Obra obra = findTrackedWork(codigo);
@@ -244,41 +210,6 @@ public class GygService {
         return found.get();
     }
 
-    // 8. GET /api/riesgos/labores
-    public List<LaborDTO> getLabores() {
-        return laborRepository.findAll().stream()
-                .map(l -> new LaborDTO(l.getId(), l.getNombre()))
-                .collect(Collectors.toList());
-    }
-
-    // 9. GET /api/riesgos/{laborId}
-    public LaborDetalleDTO getLaborDetalle(Long laborId) {
-        Labor labor = laborRepository.findById(laborId)
-                .orElseThrow(() -> new ResourceNotFoundException("Labor no encontrada con ID: " + laborId));
-
-        List<RiesgoDTO> riesgosDTO = labor.getRiesgos().stream()
-                .map(r -> new RiesgoDTO(r.getId(), r.getDescripcion(), r.getNivelSeveridad()))
-                .collect(Collectors.toList());
-
-        List<EppDTO> eppsDTO = labor.getEpps().stream()
-                .map(e -> new EppDTO(e.getId(), e.getNombre(), e.getTipo()))
-                .collect(Collectors.toList());
-
-        return new LaborDetalleDTO(
-                labor.getId(),
-                labor.getNombre(),
-                riesgosDTO,
-                eppsDTO
-        );
-    }
-
-    // 10. GET /api/politicas-ambientales
-    public List<PoliticaAmbientalDTO> getPoliticasAmbientales() {
-        return politicaAmbientalRepository.findAll().stream()
-                .map(p -> new PoliticaAmbientalDTO(p.getId(), p.getTitulo(), p.getDescripcion()))
-                .collect(Collectors.toList());
-    }
-
     private String mapTipoServicioToNivelRiesgo(String tipoServicio) {
         if (tipoServicio == null) {
             return "BAJO";
@@ -310,42 +241,6 @@ public class GygService {
             count++;
         }
         return count;
-    }
-
-    private String inferirCategoria(String nombreObra) {
-        if (nombreObra == null) {
-            return "CIVIL";
-        }
-        String nombre = nombreObra.toUpperCase(Locale.ROOT);
-        if (nombre.contains("SST") || nombre.contains("SEGURIDAD") || nombre.contains("SALUD") || nombre.contains("HSEQ")) {
-            return "SST";
-        }
-        return "CIVIL";
-    }
-
-    private String construirDescripcion(String nombreObra) {
-        if (nombreObra == null) {
-            return "Proyecto de infraestructura y consultoria con enfoque de seguridad, calidad y sostenibilidad.";
-        }
-        String categoria = inferirCategoria(nombreObra);
-        if ("SST".equals(categoria)) {
-            return "Programa de acompañamiento y fortalecimiento de seguridad y salud en el trabajo para la operación del proyecto.";
-        }
-        return "Proyecto de infraestructura y obra civil con control de calidad, planificación y ejecución técnica.";
-    }
-
-    private String construirMetricaDestacada(String nombreObra) {
-        if ("SST".equals(inferirCategoria(nombreObra))) {
-            return "Cumplimiento y prevención";
-        }
-        return "Ejecución y calidad";
-    }
-
-    private String construirImagen(String nombreObra) {
-        if ("SST".equals(inferirCategoria(nombreObra))) {
-            return "https://images.unsplash.com/photo-1581092921461-eab62e97a2d6?auto=format&fit=crop&w=900&q=80";
-        }
-        return "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=900&q=80";
     }
 
     public record StoredImage(byte[] content, String contentType) {

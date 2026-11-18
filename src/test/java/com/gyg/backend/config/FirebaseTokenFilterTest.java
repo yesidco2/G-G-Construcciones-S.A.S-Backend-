@@ -40,10 +40,10 @@ class FirebaseTokenFilterTest {
         FirebaseTokenFilter filter = new FirebaseTokenFilter(auth, usuarioService);
         FilterChain chain = (request, response) -> { };
 
-        filter.doFilter(request("/api/proyectos"), new MockHttpServletResponse(), chain);
+        filter.doFilter(request("/api/institucional"), new MockHttpServletResponse(), chain);
         assertNotNull(SecurityContextHolder.getContext().getAuthentication());
         SecurityContextHolder.clearContext();
-        filter.doFilter(request("/api/servicios"), new MockHttpServletResponse(), chain);
+        filter.doFilter(request("/api/datos-legales"), new MockHttpServletResponse(), chain);
 
         verify(auth, times(1)).verifyIdToken("valid-token", false);
     }

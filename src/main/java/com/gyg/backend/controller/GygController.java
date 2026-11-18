@@ -10,7 +10,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ContentDisposition;
@@ -74,12 +73,6 @@ public class GygController {
     @Operation(summary = "Obtener mision, vision y valores de la empresa")
     public ResponseEntity<InstitucionalDTO> getInstitucional() {
         return ResponseEntity.ok(gygService.getInstitucional());
-    }
-
-    @GetMapping("/servicios")
-    @Operation(summary = "Listar todos los servicios ofrecidos (CIVIL y SST)")
-    public ResponseEntity<List<ServicioDTO>> getServicios() {
-        return ResponseEntity.ok(gygService.getServicios());
     }
 
     @GetMapping("/datos-legales")
@@ -171,13 +164,6 @@ public class GygController {
         return ResponseEntity.ok(gygService.responderChat(request));
     }
 
-    @GetMapping("/proyectos")
-    @Operation(summary = "Listar obras del portafolio con filtro opcional por categoria (CIVIL o SST)")
-    public ResponseEntity<List<ProyectoDTO>> getProyectos(
-            @RequestParam(required = false) @Pattern(regexp = "CIVIL|SST") String categoria) {
-        return ResponseEntity.ok(gygService.getProyectos(categoria));
-    }
-
     @PostMapping("/obras/seguimiento")
     @Operation(summary = "Consultar el seguimiento de una obra por código de acceso")
     public ResponseEntity<SeguimientoObraDTO> getSeguimientoObra(
@@ -230,22 +216,4 @@ public class GygController {
                 "Has alcanzado el limite de consultas de seguimiento. Intenta nuevamente en un minuto.");
     }
 
-    @GetMapping("/riesgos/labores")
-    @Operation(summary = "Listar las labores o actividades de alto riesgo disponibles")
-    public ResponseEntity<List<LaborDTO>> getLabores() {
-        return ResponseEntity.ok(gygService.getLabores());
-    }
-
-    @GetMapping("/riesgos/{laborId}")
-    @Operation(summary = "Obtener la matriz de riesgos y EPP recomendados para una labor especifica")
-    public ResponseEntity<LaborDetalleDTO> getLaborDetalle(
-            @PathVariable("laborId") @Positive Long laborId) {
-        return ResponseEntity.ok(gygService.getLaborDetalle(laborId));
-    }
-
-    @GetMapping("/politicas-ambientales")
-    @Operation(summary = "Obtener las politicas y acciones de mitigacion ambiental de la empresa")
-    public ResponseEntity<List<PoliticaAmbientalDTO>> getPoliticasAmbientales() {
-        return ResponseEntity.ok(gygService.getPoliticasAmbientales());
-    }
 }
