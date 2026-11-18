@@ -103,9 +103,7 @@ En el perfil `dev`, CORS permite `http://localhost:5173` (puerto por defecto de 
 | Método | Endpoint | Descripción |
 |---|---|---|
 | **GET** | `/api/institucional` | Devuelve la misión, visión y valores de la empresa. |
-| **GET** | `/api/servicios` | Retorna los servicios ofrecidos organizados por bloque (`CIVIL` o `SST`). |
 | **GET** | `/api/datos-legales` | Devuelve el NIT y la dirección física de la empresa. |
-| **GET** | `/api/proyectos` | Retorna el portafolio de proyectos. Opcionalmente filtrable por query param `?categoria=CIVIL` o `?categoria=SST`. |
 | **POST** | `/api/obras/seguimiento` | Recibe `{ "codigo": "..." }` y retorna únicamente datos de seguimiento permitidos. |
 | **POST** | `/api/obras/seguimiento/fotos/{fotoId}` | Retorna una foto privada como `image/png`; requiere `{ "codigo": "..." }` en el cuerpo y límites por IP. |
 | **POST** | `/api/contacto` | Recibe `{ nombre, empresa, correo, telefono, tipoServicio, mensaje, aceptaPolitica, politicaVersion, sitioWeb }`. Requiere nombre, mensaje, consentimiento y al menos correo o teléfono; empresa, correo, teléfono y versión de política aceptan cadena vacía como ausente. El honeypot `sitioWeb` debe enviarse vacío. Cuando CAPTCHA está activo, requiere `X-Captcha-Token`. |
@@ -114,9 +112,6 @@ En el perfil `dev`, CORS permite `http://localhost:5173` (puerto por defecto de 
 | **POST** | `/api/auth/email-verification` | Requiere Firebase ID token, pero no sesión CAPTCHA verificada ni body. El destinatario se resuelve desde Firebase; envía un enlace oficial si la cuenta está activa y aún no verificada. |
 | **POST** | `/api/chat` | Recibe `{ pregunta }`, procesa una respuesta automática basada en palabras clave de normativas SST, la registra en base de datos y la retorna. |
 | **GET** | `/api/admin/consultas-chat?page=0&size=20` | Lista registros de chat paginados; requiere usuario administrador con sesión verificada. |
-| **GET** | `/api/riesgos/labores` | Retorna la lista de actividades/labores críticas de seguridad laboral. |
-| **GET** | `/api/riesgos/{laborId}` | Retorna la matriz de riesgos detallada y los EPP sugeridos para una labor en particular. |
-| **GET** | `/api/politicas-ambientales` | Devuelve la lista de políticas y compromisos de mitigación ambiental de la empresa. |
 
 ### Contrato del panel de obras
 
@@ -187,11 +182,13 @@ Turnstile usa `POST /api/auth/captcha/verify` con `{ "captchaToken": "<token>" }
 
 Los hashes de tokens CAPTCHA usados, tickets de un solo uso y sesiones CAPTCHA verificadas se comparten mediante PostgreSQL (migración aditiva `V8`). Los tickets expiran según `APP_CAPTCHA_TICKET_TTL_SECONDS` (120 segundos por defecto) y se ligan a la IP que Spring obtiene del proxy confiable y al `User-Agent`. La IP se toma de `request.getRemoteAddr()` tanto para Siteverify como para rate limit y tickets. No se confía directamente en `X-Forwarded-For` ni en `CF-Connecting-IP`: limita el acceso al origen al proxy, configura `APP_TRUSTED_PROXIES` con sus rangos controlados y elige `APP_REMOTE_IP_HEADER`. En Cloudflare se puede usar `CF-Connecting-IP` solo si el origen no acepta conexiones directas y Cloudflare sobrescribe ese encabezado. Mantén actualizados los rangos del proxy según tu proveedor; no uses `.*`.
 
-El restablecimiento conserva `POST /api/auth/password-reset` con `{ "email": "..." }`. Firebase Admin SDK crea el enlace oficial mediante `generatePasswordResetLink()` y el servidor lo envía con la plantilla HTML corporativa. La respuesta aceptada es igual para correo no autorizado/no existente y para errores por cuenta o entrega, que se registran sin dirección, enlace ni credenciales; la falta global de configuración devuelve `503`. No se envían contraseñas ni se inventan códigos o URLs de acción.
+El restablecimiento conserva `POST /api/auth/password-reset` con `{ "email": "..." }`. Firebase Admin SDK crea el enlace oficial mediante `generatePasswordResetLink()` y el servidor lo envía con la plantilla HTML corporativa. La respuesta `202` es genérica para correos no autorizados/no existentes y para Firebase o SMTP no disponibles; los errores se registran sin dirección, enlace ni credenciales. No se envían contraseñas ni se inventan códigos o URLs de acción.
 
 `POST /api/auth/email-verification` no acepta correo ni otro body: requiere autenticación Firebase, pero no requiere ticket CAPTCHA ni sesión verificada, para que una cuenta aún no verificada pueda pedir el mensaje. El backend usa el UID autenticado para consultar la cuenta de Firebase, rechaza cuentas inactivas/deshabilitadas, no reenvía si ya está verificada y limita las solicitudes por IP y cuenta. Responde `202 { "status": "sent" }` o `200 { "status": "already_verified" }`. Firebase genera el enlace con `generateEmailVerificationLink()`; los enlaces mantienen el handler oficial de Firebase.
 
-Para ambos correos configura `APP_MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME` y `SMTP_PASSWORD`. `SMTP_AUTH`, `SMTP_STARTTLS_ENABLE`, `SMTP_STARTTLS_REQUIRED` y los timeouts permiten ajustar el relay; no guardes credenciales SMTP en el repositorio. La cuenta debe actualizar su token de Firebase tras completar la verificación para que los claims y el rol reflejen el nuevo estado.
+Para ambos correos configura `APP_MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME` y `SMTP_PASSWORD`. Gmail requiere `SMTP_HOST=smtp.gmail.com`, puerto `587`, `SMTP_AUTH=true`, `SMTP_STARTTLS_ENABLE=true` y `SMTP_STARTTLS_REQUIRED=true`. Las contraseñas de aplicación de Gmail se muestran agrupadas para facilitar su lectura; el backend elimina espacios de formato únicamente cuando el host es `smtp.gmail.com`. No guardes credenciales SMTP en el repositorio. La cuenta debe actualizar su token de Firebase tras completar la verificación para que los claims y el rol reflejen el nuevo estado.
+
+El envío registra la categoría, la cadena de clases de excepción y, cuando se puede extraer sin incluir el mensaje del servidor, el código SMTP. No registra contraseñas, destinatarios ni enlaces. Para probar conexión y autenticación sin enviar correo, configura `APP_MAIL_TEST_CONNECTION=true` en perfil `dev`; al iniciar, el backend ejecuta `JavaMailSenderImpl.testConnection()` y registra el resultado. La prueba está desactivada por defecto. También se puede ejecutar `.\mvnw.cmd "-Dtest=SmtpConnectionDiagnosticTest" test` con `APP_SMTP_DIAGNOSTIC=true` y las variables SMTP cargadas en el entorno de PowerShell.
 
 ---
 
