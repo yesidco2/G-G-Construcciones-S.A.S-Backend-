@@ -3,6 +3,7 @@ package com.gyg.backend.service;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -14,35 +15,31 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 @Service
 public class CaptchaService {
 
-    private static final int MAX_TICKETS = 100_000;
-    private static final int MAX_USED_TOKENS = 100_000;
     private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
 
     private final CaptchaVerificationClient verificationClient;
+    private final CaptchaStateStore stateStore;
     private final int ticketTtlSeconds;
     private final boolean enabled;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
-    private final Map<String, Ticket> tickets = new LinkedHashMap<>();
-    private final Map<String, Instant> usedTokens = new LinkedHashMap<>();
 
     @Autowired
     public CaptchaService(
             CaptchaVerificationClient verificationClient,
+            CaptchaStateStore stateStore,
             @Value("${app.captcha.ticket-ttl-seconds:120}") int ticketTtlSeconds,
             @Value("${app.captcha.enabled:true}") boolean enabled) {
-        this(verificationClient, ticketTtlSeconds, enabled, Clock.systemUTC());
+        this(verificationClient, stateStore, ticketTtlSeconds, enabled, Clock.systemUTC());
     }
 
     CaptchaService(
             CaptchaVerificationClient verificationClient,
+            CaptchaStateStore stateStore,
             int ticketTtlSeconds,
             boolean enabled,
             Clock clock) {
@@ -50,6 +47,7 @@ public class CaptchaService {
             throw new IllegalArgumentException("El TTL de tickets CAPTCHA debe ser positivo.");
         }
         this.verificationClient = verificationClient;
+        this.stateStore = stateStore;
         this.ticketTtlSeconds = ticketTtlSeconds;
         this.enabled = enabled;
         this.clock = clock;
@@ -71,77 +69,82 @@ public class CaptchaService {
         Instant expiresAt = clock.instant().plusSeconds(ticketTtlSeconds);
         String ticketHash = sha256(ticket);
         String bindingHash = bindingHash(clientIp, request.getHeader("User-Agent"));
-        synchronized (tickets) {
-            purgeExpiredTickets();
-            if (tickets.size() >= MAX_TICKETS) {
-                throw new InvalidCaptchaException();
-            }
-            tickets.put(ticketHash, new Ticket(bindingHash, expiresAt));
+        try {
+            stateStore.issueTicket(ticketHash, bindingHash, expiresAt.toEpochMilli());
+        } catch (DataAccessException exception) {
+            throw new CaptchaVerificationException(CaptchaFailureCode.STATE_UNAVAILABLE, exception);
         }
         return new TicketResponse(ticket, ticketTtlSeconds);
     }
 
     private void verifyToken(String captchaToken, String expectedAction, HttpServletRequest request) {
-        if (!enabled || captchaToken == null || captchaToken.isBlank() || captchaToken.length() > 2048) {
+        if (!enabled) {
+            throw new CaptchaVerificationException(CaptchaFailureCode.CONFIGURATION_ERROR);
+        }
+        if (captchaToken == null || captchaToken.isBlank() || captchaToken.length() > 2048) {
             throw new InvalidCaptchaException();
         }
 
         String tokenHash = sha256(captchaToken);
         Instant expiresAt = clock.instant().plus(TOKEN_TTL);
-        synchronized (usedTokens) {
-            purgeExpiredTokens();
-            if (usedTokens.containsKey(tokenHash) || usedTokens.size() >= MAX_USED_TOKENS) {
-                throw new InvalidCaptchaException();
-            }
-            usedTokens.put(tokenHash, expiresAt);
+        boolean reserved;
+        try {
+            stateStore.deleteExpired(clock.instant().toEpochMilli());
+            reserved = stateStore.reserveProviderToken(
+                    tokenHash, expiresAt.toEpochMilli(), clock.instant().toEpochMilli());
+        } catch (DataAccessException exception) {
+            throw new CaptchaVerificationException(CaptchaFailureCode.STATE_UNAVAILABLE, exception);
+        }
+        if (!reserved) {
+            throw new InvalidCaptchaException(CaptchaFailureCode.TOKEN_REUSED);
         }
 
+        CaptchaVerificationResult result;
         try {
-            if (!verificationClient.verify(captchaToken, clientIp(request), expectedAction)) {
-                throw new InvalidCaptchaException();
+            result = verificationClient.verify(captchaToken, clientIp(request), expectedAction);
+        } catch (CaptchaVerificationException exception) {
+            if (exception.getFailureCode().retryable()) {
+                releaseToken(tokenHash);
             }
+            throw exception;
         } catch (RuntimeException exception) {
-            synchronized (usedTokens) {
-                usedTokens.remove(tokenHash, expiresAt);
+            releaseToken(tokenHash);
+            throw new CaptchaVerificationException(CaptchaFailureCode.PROVIDER_UNAVAILABLE, exception);
+        }
+        if (result == null || !result.successful()) {
+            CaptchaFailureCode code = result == null
+                    ? CaptchaFailureCode.PROVIDER_ERROR
+                    : result.failureCode();
+            if (code == null) {
+                code = CaptchaFailureCode.PROVIDER_ERROR;
             }
-            throw new InvalidCaptchaException();
+            if (code.retryable()) {
+                releaseToken(tokenHash);
+            }
+            throw new InvalidCaptchaException(code);
         }
     }
 
-    private void purgeExpiredTokens() {
-        Instant now = clock.instant();
-        Iterator<Instant> iterator = usedTokens.values().iterator();
-        while (iterator.hasNext()) {
-            if (!iterator.next().isAfter(now)) {
-                iterator.remove();
-            }
+    private void releaseToken(String tokenHash) {
+        try {
+            stateStore.releaseProviderToken(tokenHash);
+        } catch (DataAccessException exception) {
+            throw new CaptchaVerificationException(CaptchaFailureCode.STATE_UNAVAILABLE, exception);
         }
     }
 
     public boolean consumeTicket(String ticket, HttpServletRequest request) {
-        if (ticket == null || ticket.isBlank()) {
+        if (ticket == null || ticket.isBlank() || ticket.length() > 128) {
             return false;
         }
         String clientIp = clientIp(request);
-        Ticket stored;
-        synchronized (tickets) {
-            stored = tickets.remove(sha256(ticket));
-        }
-        return stored != null
-                && stored.expiresAt().isAfter(clock.instant())
-                && MessageDigest.isEqual(
-                        stored.bindingHash().getBytes(StandardCharsets.US_ASCII),
-                        bindingHash(clientIp, request.getHeader("User-Agent"))
-                                .getBytes(StandardCharsets.US_ASCII));
-    }
-
-    private void purgeExpiredTickets() {
-        Instant now = clock.instant();
-        Iterator<Ticket> iterator = tickets.values().iterator();
-        while (iterator.hasNext()) {
-            if (!iterator.next().expiresAt().isAfter(now)) {
-                iterator.remove();
-            }
+        try {
+            return stateStore.consumeTicket(
+                    sha256(ticket),
+                    bindingHash(clientIp, request.getHeader("User-Agent")),
+                    clock.instant().toEpochMilli());
+        } catch (DataAccessException exception) {
+            throw new CaptchaVerificationException(CaptchaFailureCode.STATE_UNAVAILABLE, exception);
         }
     }
 
@@ -167,12 +170,13 @@ public class CaptchaService {
     public record TicketResponse(String ticket, int expiresIn) {
     }
 
-    private record Ticket(String bindingHash, Instant expiresAt) {
-    }
-
-    public static class InvalidCaptchaException extends RuntimeException {
+    public static class InvalidCaptchaException extends CaptchaVerificationException {
         public InvalidCaptchaException() {
-            super("La verificación CAPTCHA no fue válida.");
+            this(CaptchaFailureCode.INVALID_TOKEN);
+        }
+
+        public InvalidCaptchaException(CaptchaFailureCode failureCode) {
+            super(failureCode);
         }
     }
 }

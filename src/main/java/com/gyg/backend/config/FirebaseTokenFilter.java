@@ -99,7 +99,9 @@ public class FirebaseTokenFilter extends OncePerRequestFilter {
     private static boolean requiresRevocationCheck(HttpServletRequest request) {
         String path = request.getRequestURI();
         return path.equals("/api/panel") || path.startsWith("/api/panel/")
-                || path.equals("/api/admin") || path.startsWith("/api/admin/");
+                || path.equals("/api/admin") || path.startsWith("/api/admin/")
+                || path.equals("/api/auth/session")
+                || path.equals("/api/auth/email-verification");
     }
 
     private static boolean isExpired(FirebaseToken token) {

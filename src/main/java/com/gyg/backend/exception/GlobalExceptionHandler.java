@@ -17,9 +17,11 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
-import com.gyg.backend.service.CaptchaProviderUnavailableException;
-import com.gyg.backend.service.CaptchaService;
+import com.gyg.backend.service.CaptchaFailureCode;
+import com.gyg.backend.service.CaptchaVerificationException;
+import com.gyg.backend.service.EmailDeliveryException;
 import com.gyg.backend.service.PasswordResetUnavailableException;
+import com.gyg.backend.service.SecurityStateUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,6 +84,7 @@ public class GlobalExceptionHandler {
         body.put("timestamp", LocalDateTime.now());
         body.put("status", HttpStatus.TOO_MANY_REQUESTS.value());
         body.put("error", "Too Many Requests");
+        body.put("code", "RATE_LIMITED");
         body.put("message", ex.getMessage());
         body.put("path", request.getDescription(false).replace("uri=", ""));
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
@@ -89,20 +92,16 @@ public class GlobalExceptionHandler {
                 .body(body);
     }
 
-    @ExceptionHandler(CaptchaService.InvalidCaptchaException.class)
-    public ResponseEntity<Map<String, Object>> handleInvalidCaptcha(
-            CaptchaService.InvalidCaptchaException ex,
+    @ExceptionHandler(CaptchaVerificationException.class)
+    public ResponseEntity<Map<String, Object>> handleCaptchaFailure(
+            CaptchaVerificationException ex,
             WebRequest request) {
+        CaptchaFailureCode code = ex.getFailureCode();
+        String message = code.httpStatus().is5xxServerError()
+                ? "La verificación CAPTCHA no está disponible. Intenta nuevamente más tarde."
+                : "La verificación CAPTCHA no fue válida. Solicita un nuevo intento.";
         return createErrorResponse(
-                HttpStatus.FORBIDDEN, "Forbidden", "La verificación CAPTCHA no fue válida.", request);
-    }
-
-    @ExceptionHandler(CaptchaProviderUnavailableException.class)
-    public ResponseEntity<Map<String, Object>> handleCaptchaUnavailable(
-            CaptchaProviderUnavailableException ex,
-            WebRequest request) {
-        return createErrorResponse(
-                HttpStatus.FORBIDDEN, "Forbidden", "La verificación CAPTCHA no fue válida.", request);
+                code.httpStatus(), code.httpStatus().getReasonPhrase(), message, code.responseCode(), request);
     }
 
     @ExceptionHandler(PasswordResetUnavailableException.class)
@@ -111,7 +110,32 @@ public class GlobalExceptionHandler {
             WebRequest request) {
         return createErrorResponse(
                 HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
-                "No fue posible procesar la solicitud. Intenta nuevamente más tarde.", request);
+                "No fue posible procesar la solicitud. Intenta nuevamente más tarde.",
+                "PASSWORD_RESET_UNAVAILABLE", request);
+    }
+
+    @ExceptionHandler(EmailDeliveryException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailDeliveryUnavailable(
+            EmailDeliveryException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Service Unavailable",
+                "El servicio de correo no está disponible. Intenta nuevamente más tarde.",
+                "EMAIL_DELIVERY_UNAVAILABLE",
+                request);
+    }
+
+    @ExceptionHandler(SecurityStateUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleSecurityStateUnavailable(
+            SecurityStateUnavailableException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Service Unavailable",
+                "No fue posible verificar la sesión. Intenta nuevamente más tarde.",
+                "AUTH_SESSION_UNAVAILABLE",
+                request);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -184,10 +208,22 @@ public class GlobalExceptionHandler {
             String error,
             String message,
             WebRequest request) {
+        return createErrorResponse(status, error, message, null, request);
+    }
+
+    private ResponseEntity<Map<String, Object>> createErrorResponse(
+            HttpStatus status,
+            String error,
+            String message,
+            String code,
+            WebRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", status.value());
         body.put("error", error);
+        if (code != null) {
+            body.put("code", code);
+        }
         body.put("message", message);
         body.put("path", request instanceof ServletWebRequest servletWebRequest
                 ? servletWebRequest.getRequest().getRequestURI()

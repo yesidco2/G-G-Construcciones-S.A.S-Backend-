@@ -1,11 +1,16 @@
 package com.gyg.backend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.firebase.auth.FirebaseAuth;
 import com.gyg.backend.dto.ChatRequest;
 import com.gyg.backend.dto.ContactoRequest;
 import com.gyg.backend.repository.SolicitudContactoRepository;
 import com.gyg.backend.repository.NewsletterRepository;
 import com.gyg.backend.dto.NewsletterRequest;
+import com.gyg.backend.model.FotoObra;
+import com.gyg.backend.model.Obra;
+import com.gyg.backend.repository.ObraRepository;
+import com.gyg.backend.service.TrackingCodeService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -15,12 +20,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -37,6 +44,9 @@ class GygControllerIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @MockitoBean
+    private FirebaseAuth firebaseAuth;
+
     @Autowired
     private ObjectMapper objectMapper;
 
@@ -45,6 +55,12 @@ class GygControllerIntegrationTest {
 
     @Autowired
     private NewsletterRepository newsletterRepository;
+
+    @Autowired
+    private ObraRepository obraRepository;
+
+    @Autowired
+    private TrackingCodeService trackingCodeService;
 
     @Test
     void shouldNeverSetCookiesOnApiResponses() throws Exception {
@@ -79,6 +95,10 @@ class GygControllerIntegrationTest {
                 .andExpect(jsonPath("$.error").value("No autorizado"))
                 .andExpect(jsonPath("$.message").isNotEmpty());
 
+        mockMvc.perform(post("/api/auth/email-verification"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+
         mockMvc.perform(get("/api/admin/usuarios"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401));
@@ -96,14 +116,14 @@ class GygControllerIntegrationTest {
                 .andExpect(status().isAccepted());
     }
 
-        @Test
-        void shouldRejectNonTextCaptchaTokenWithGenericForbiddenResponse() throws Exception {
-                mockMvc.perform(post("/api/auth/captcha/verify")
-                                                .contentType(MediaType.APPLICATION_JSON)
-                                                .content("{\"captchaToken\":123}"))
-                                .andExpect(status().isForbidden())
-                                .andExpect(jsonPath("$.status").value(403))
-                                .andExpect(jsonPath("$.message").value("La verificación CAPTCHA no fue válida."));
+    @Test
+    void shouldReportCaptchaConfigurationWhenVerificationIsDisabled() throws Exception {
+        mockMvc.perform(post("/api/auth/captcha/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"captchaToken\":\"token\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.code").value("CAPTCHA_CONFIGURATION_ERROR"));
         }
 
     @Test
@@ -113,6 +133,9 @@ class GygControllerIntegrationTest {
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/api/admin/usuarios"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/panel/obras/clientes"))
                 .andExpect(status().isForbidden());
     }
 
@@ -124,6 +147,16 @@ class GygControllerIntegrationTest {
 
         mockMvc.perform(get("/api/admin/usuarios"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "INGENIERO")
+    void shouldExposeAllowedWorkStatesToEngineers() throws Exception {
+        mockMvc.perform(get("/api/panel/obras/estados"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(4)))
+                .andExpect(jsonPath("$[0]").value("PLANIFICADA"))
+                .andExpect(jsonPath("$[3]").value("FINALIZADA"));
     }
 
     @Test
@@ -298,7 +331,7 @@ class GygControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.camposInvalidos[0].campo").value("correo"));
+                .andExpect(jsonPath("$.camposInvalidos[*].campo").value(hasItem("correo")));
     }
 
     @Test
@@ -516,30 +549,58 @@ class GygControllerIntegrationTest {
 
     @Test
     void shouldListCivilProjects() throws Exception {
+        Obra civilProject = new Obra("Proyecto Civil de Integración", "EN_PROGRESO", 1L, 10);
+        civilProject.setCodigoHash(trackingCodeService.generate().hash());
+        obraRepository.saveAndFlush(civilProject);
+
         mockMvc.perform(get("/api/proyectos")
                         .param("categoria", "CIVIL"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)));
+                .andExpect(jsonPath("$", hasSize(org.hamcrest.Matchers.greaterThan(0))))
+                .andExpect(jsonPath("$[*].categoria",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("CIVIL"))));
     }
 
     @Test
-    void shouldReturnSeededProjectTrackingAndNotFoundForUnknownCode() throws Exception {
-        mockMvc.perform(post("/api/obras/seguimiento")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"codigo\":\"GG-2026-00125\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.porcentajeAvance").value(74))
-                .andExpect(jsonPath("$.fotos", hasSize(3)))
-                .andExpect(jsonPath("$.hitos").isArray());
+    void shouldReturnSecurelyGeneratedProjectTrackingAndNotFoundForUnknownCode() throws Exception {
+        TrackingCodeService.GeneratedTrackingCode generated = trackingCodeService.generate();
+        Obra obra = new Obra("Viaducto Metropolitano", "EN_PROGRESO", 1L, 74);
+        obra.setCodigoHash(generated.hash());
+        obra.addFoto(new FotoObra("https://example.com/foto-1.png", java.time.LocalDate.now()));
+        obra.addFoto(new FotoObra("https://example.com/foto-2.png", java.time.LocalDate.now()));
+        obra.addFoto(new FotoObra("https://example.com/foto-3.png", java.time.LocalDate.now()));
+        obraRepository.saveAndFlush(obra);
 
         mockMvc.perform(post("/api/obras/seguimiento")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"codigo\":\"NO-EXISTE\"}"))
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "codigo", generated.value())))
+                        .with(request -> {
+                            request.setRemoteAddr("192.0.2.221");
+                            return request;
+                        }))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.porcentajeAvance").value(74))
+                .andExpect(jsonPath("$.fotos", hasSize(3)))
+                .andExpect(jsonPath("$.hitos").isArray())
+                .andExpect(jsonPath("$.codigoSeguimiento").doesNotExist());
+
+        mockMvc.perform(post("/api/obras/seguimiento")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"codigo\":\"NO-EXISTE\"}")
+                        .with(request -> {
+                            request.setRemoteAddr("192.0.2.222");
+                            return request;
+                        }))
                 .andExpect(status().isNotFound());
 
         mockMvc.perform(post("/api/obras/seguimiento")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"codigo\":\"ab\"}"))
+                        .content("{\"codigo\":\"ab\"}")
+                        .with(request -> {
+                            request.setRemoteAddr("192.0.2.223");
+                            return request;
+                        }))
                 .andExpect(status().isNotFound());
     }
 
@@ -549,12 +610,20 @@ class GygControllerIntegrationTest {
         for (int attempt = 0; attempt < 5; attempt++) {
             mockMvc.perform(post("/api/obras/seguimiento")
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(request))
+                            .content(request)
+                            .with(mockRequest -> {
+                                mockRequest.setRemoteAddr("192.0.2.224");
+                                return mockRequest;
+                            }))
                     .andExpect(status().isNotFound());
         }
         mockMvc.perform(post("/api/obras/seguimiento")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(request))
+                        .content(request)
+                        .with(mockRequest -> {
+                            mockRequest.setRemoteAddr("192.0.2.224");
+                            return mockRequest;
+                        }))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"));
     }
@@ -573,6 +642,15 @@ class GygControllerIntegrationTest {
     @Test
     void shouldRequireAuthenticationForOpenApiDocumentation() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldRequireAuthorizedRoleForPanelEndpoints() throws Exception {
+        mockMvc.perform(get("/api/panel/obras"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/panel/obras/clientes"))
                 .andExpect(status().isUnauthorized());
     }
 

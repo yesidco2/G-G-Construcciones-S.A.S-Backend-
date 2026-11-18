@@ -49,7 +49,7 @@ class FirebaseTokenFilterTest {
     }
 
     @Test
-    void shouldCheckRevocationOnlyForPanelAndAdminRequests() throws Exception {
+    void shouldCheckRevocationForPrivilegedAndAuthenticationCompletionRequests() throws Exception {
         FirebaseAuth auth = mock(FirebaseAuth.class);
         UsuarioService usuarioService = mock(UsuarioService.class);
         FirebaseToken token = token();
@@ -58,8 +58,10 @@ class FirebaseTokenFilterTest {
         FirebaseTokenFilter filter = new FirebaseTokenFilter(auth, usuarioService);
 
         filter.doFilter(request("/api/panel/obras"), new MockHttpServletResponse(), (req, res) -> { });
+        filter.doFilter(request("/api/auth/session"), new MockHttpServletResponse(), (req, res) -> { });
+        filter.doFilter(request("/api/auth/email-verification"), new MockHttpServletResponse(), (req, res) -> { });
 
-        verify(auth).verifyIdToken(eq("valid-token"), eq(true));
+        verify(auth, times(3)).verifyIdToken(eq("valid-token"), eq(true));
     }
 
     private MockHttpServletRequest request(String path) {

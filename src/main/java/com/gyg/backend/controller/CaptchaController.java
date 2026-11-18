@@ -5,6 +5,7 @@ import com.gyg.backend.service.RateLimitService;
 import com.gyg.backend.service.VerifiedSessionService;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;

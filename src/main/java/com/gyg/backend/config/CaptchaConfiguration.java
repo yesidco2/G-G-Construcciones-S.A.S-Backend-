@@ -8,15 +8,23 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestOperations;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Set;
 
 @Configuration
 public class CaptchaConfiguration {
 
+    private static final Set<String> TURNSTILE_TEST_SECRETS = Set.of(
+            "1x0000000000000000000000000000000AA",
+            "2x0000000000000000000000000000000AA",
+            "3x0000000000000000000000000000000AA");
+
     @Bean
     RestOperations captchaRestOperations(RestTemplateBuilder builder) {
         return builder
-                .setConnectTimeout(Duration.ofSeconds(10))
-                .setReadTimeout(Duration.ofSeconds(10))
+                .connectTimeout(Duration.ofSeconds(10))
+                .readTimeout(Duration.ofSeconds(10))
                 .build();
     }
 
@@ -35,22 +43,29 @@ public class CaptchaConfiguration {
                 throw new IllegalStateException(
                         "APP_CAPTCHA_SECRET es obligatorio cuando CAPTCHA está habilitado.");
             }
-                if (enabled && provider.equals("turnstile") && expectedHostnames.isBlank()) {
+            Set<String> hostnames = Arrays.stream(expectedHostnames.split(","))
+                    .map(String::trim)
+                    .filter(hostname -> !hostname.isEmpty())
+                    .map(hostname -> hostname.toLowerCase(Locale.ROOT))
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            if (enabled && provider.equals("turnstile") && hostnames.isEmpty()) {
                 throw new IllegalStateException(
-                    "app.captcha.expected-hostnames es obligatorio cuando Turnstile está habilitado.");
-                }
-                boolean production = java.util.Arrays.stream(profiles.split(","))
+                        "app.captcha.expected-hostnames es obligatorio cuando Turnstile está habilitado.");
+            }
+            boolean production = Arrays.stream(profiles.split(","))
                     .map(String::trim)
                     .anyMatch("prod"::equalsIgnoreCase);
-                boolean containsLocalHostname = java.util.Arrays.stream(expectedHostnames.split(","))
-                    .map(String::trim)
-                    .map(hostname -> hostname.toLowerCase(java.util.Locale.ROOT))
+            boolean containsLocalHostname = hostnames.stream()
                     .anyMatch(hostname -> hostname.equals("localhost")
-                        || hostname.equals("127.0.0.1"));
-                if (production && containsLocalHostname) {
+                            || hostname.equals("127.0.0.1"));
+            if (production && containsLocalHostname) {
                 throw new IllegalStateException(
-                    "app.captcha.expected-hostnames no puede incluir localhost ni 127.0.0.1 en producción.");
-                }
+                        "app.captcha.expected-hostnames no puede incluir localhost ni 127.0.0.1 en producción.");
+            }
+            if (enabled && production && provider.equals("turnstile")
+                    && TURNSTILE_TEST_SECRETS.contains(secret.trim())) {
+                throw new IllegalStateException("No se permiten claves de prueba de Turnstile en producción.");
+            }
         };
     }
 }

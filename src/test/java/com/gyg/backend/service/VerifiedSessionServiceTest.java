@@ -7,14 +7,20 @@ import java.time.Instant;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class VerifiedSessionServiceTest {
 
     @Test
     void shouldValidateSessionOnlyForMatchingUidAndAuthTime() {
-        VerifiedSessionService sessions = new VerifiedSessionService();
+        VerifiedSessionStore store = mock(VerifiedSessionStore.class);
+        VerifiedSessionService sessions = new VerifiedSessionService(store);
         FirebaseToken token = token("uid-1", 1_800_000_000L, 1_800_000_100L);
+        when(store.matches(eq("uid-1"), eq(1_800_000_000L), anyLong())).thenReturn(true);
+        when(store.matches(eq("uid-2"), eq(1_800_000_000L), anyLong())).thenReturn(false);
+        when(store.matches(eq("uid-1"), eq(1_800_000_001L), anyLong())).thenReturn(false);
         sessions.create(token);
 
         assertTrue(sessions.isValid(token));
@@ -24,7 +30,7 @@ class VerifiedSessionServiceTest {
 
     @Test
     void shouldRejectExpiredFirebaseTokenWhenCreatingSession() {
-        VerifiedSessionService sessions = new VerifiedSessionService();
+        VerifiedSessionService sessions = new VerifiedSessionService(mock(VerifiedSessionStore.class));
         FirebaseToken token = token("uid-1", 1_800_000_000L, Instant.now().minusSeconds(1).getEpochSecond());
 
         assertThrows(IllegalArgumentException.class, () -> sessions.create(token));

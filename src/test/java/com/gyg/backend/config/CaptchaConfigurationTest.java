@@ -29,6 +29,30 @@ class CaptchaConfigurationTest {
     }
 
     @Test
+    void shouldRejectKnownTurnstileTestSecretInProduction() {
+        assertThrows(IllegalStateException.class, () -> new CaptchaConfiguration()
+                .validateCaptchaSettings(
+                        true,
+                        "turnstile",
+                        "1x0000000000000000000000000000000AA",
+                        "app.example.com",
+                        "prod")
+                .afterPropertiesSet());
+    }
+
+    @Test
+    void shouldAllowTurnstileTestSecretInDevelopmentOnly() {
+        assertDoesNotThrow(() -> new CaptchaConfiguration()
+                .validateCaptchaSettings(
+                        true,
+                        "turnstile",
+                        "1x0000000000000000000000000000000AA",
+                        "localhost",
+                        "dev")
+                .afterPropertiesSet());
+    }
+
+    @Test
     void shouldRequireExpectedHostnamesWhenTurnstileIsEnabled() {
         assertThrows(IllegalStateException.class, () -> new CaptchaConfiguration()
                 .validateCaptchaSettings(true, "turnstile", "secret", "", "prod")
