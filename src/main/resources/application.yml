@@ -7,6 +7,18 @@ spring:
     url: ${DB_URL}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS_ENABLE:true}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS_REQUIRED:true}
+      mail.smtp.connectiontimeout: ${SMTP_CONNECTION_TIMEOUT_MS:5000}
+      mail.smtp.timeout: ${SMTP_TIMEOUT_MS:5000}
+      mail.smtp.writetimeout: ${SMTP_WRITE_TIMEOUT_MS:5000}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -28,6 +40,7 @@ server:
   tomcat:
     remoteip:
       internal-proxies: "${APP_TRUSTED_PROXIES:(?!)}"
+      remote-ip-header: ${APP_REMOTE_IP_HEADER:X-Forwarded-For}
 app:
   http:
     max-body-size: ${APP_MAX_REQUEST_BODY_SIZE:1MB}
@@ -45,18 +58,23 @@ app:
     project-id: ${FIREBASE_PROJECT_ID:}
     credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
     credentials-json: ${FIREBASE_CREDENTIALS_JSON:}
-    web-api-key: ${FIREBASE_WEB_API_KEY:}
   auth:
     admin-emails: ${APP_ADMIN_EMAILS:}
   tracking-code:
     pepper: ${APP_TRACKING_CODE_PEPPER:}
+    legacy-enabled: ${APP_TRACKING_CODE_LEGACY_ENABLED:true}
   swagger:
     public: ${APP_SWAGGER_PUBLIC:false}
   rate-limit:
     contacto-per-hour: ${APP_RATE_LIMIT_CONTACTO_PER_HOUR:5}
     chat-per-minute: ${APP_RATE_LIMIT_CHAT_PER_MINUTE:20}
     seguimiento-per-minute: ${APP_RATE_LIMIT_SEGUIMIENTO_PER_MINUTE:10}
+    seguimiento-attempts-per-15-min: ${APP_RATE_LIMIT_SEGUIMIENTO_ATTEMPTS_PER_15_MIN:20}
+    seguimiento-failed-per-15-min: ${APP_RATE_LIMIT_SEGUIMIENTO_FAILED_PER_15_MIN:5}
     password-reset-per-hour: ${APP_RATE_LIMIT_PASSWORD_RESET_PER_HOUR:5}
+    email-verification-per-hour: ${APP_RATE_LIMIT_EMAIL_VERIFICATION_PER_HOUR:3}
+  mail:
+    from: ${APP_MAIL_FROM:}
   privacy:
     policy-version: ${APP_PRIVACY_POLICY_VERSION:2026-01}
     chat-retention-months: ${APP_CHAT_LOG_RETENTION_MONTHS:12}

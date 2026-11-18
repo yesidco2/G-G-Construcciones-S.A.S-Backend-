@@ -27,10 +27,15 @@ El backend sirve de API REST para un frontend desarrollado en React.
    - `DB_PASSWORD`: contraseña de PostgreSQL
    - `APP_CORS_ALLOWED_ORIGINS`: orígenes de frontend separados por comas; en producción no se permiten orígenes locales por defecto.
    - `APP_TRACKING_CODE_PEPPER`: valor aleatorio de al menos 32 bytes, necesario para generar y verificar códigos de seguimiento. Guárdalo en el gestor de secretos; no lo compartas ni lo cambies después de migrar la base de datos.
-   - `APP_TRUSTED_PROXIES`: expresión regular de las direcciones de los proxies inversos que realmente controlas. Spring usa `RemoteIpValve` y nunca se toma directamente la primera entrada de `X-Forwarded-For`. Por defecto no se confía en ningún proxy.
+   - `APP_TRACKING_CODE_LEGACY_ENABLED`: mantiene temporalmente la validación de códigos antiguos migrados a HMAC (`true` por defecto). Rota primero los códigos de las obras existentes y luego establece `false`.
+   - `APP_TRUSTED_PROXIES`: expresión regular de las direcciones de los proxies inversos que realmente controlas. Tomcat solo acepta el encabezado IP configurado desde esos proxies; por defecto no se confía en ningún proxy.
+   - `APP_REMOTE_IP_HEADER`: encabezado IP del proxy confiable (`X-Forwarded-For` por defecto; `CF-Connecting-IP` solo si Cloudflare está delante y protege el acceso directo al origen).
    - `APP_CAPTCHA_ENABLED`, `APP_CAPTCHA_PROVIDER` y `APP_CAPTCHA_SECRET`: configuración de CAPTCHA para los formularios; la clave secreta de Turnstile es obligatoria siempre que CAPTCHA esté habilitado.
-   - `FIREBASE_WEB_API_KEY`: clave API usada por el backend para solicitar a Firebase el correo de restablecimiento. Si la clave `VITE_FIREBASE_API_KEY` del frontend está restringida por HTTP referrer, crea una clave aparte para el backend sin esa restricción de aplicación y restríngela a la Identity Toolkit API en Google Cloud.
+   - `APP_CAPTCHA_EXPECTED_HOSTNAMES` y `APP_CAPTCHA_TICKET_TTL_SECONDS`: hostnames permitidos y duración de los tickets CAPTCHA.
+   - `APP_MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_AUTH`, `SMTP_STARTTLS_ENABLE`, `SMTP_STARTTLS_REQUIRED` y `SMTP_*_TIMEOUT_MS`: remitente y configuración SMTP; STARTTLS y sus timeouts están habilitados por defecto.
+   - `APP_RATE_LIMIT_EMAIL_VERIFICATION_PER_HOUR`: máximo de solicitudes de verificación/reenvío por IP y cuenta (3 por defecto).
    - `APP_RATE_LIMIT_PASSWORD_RESET_PER_HOUR`: máximo de solicitudes de restablecimiento por IP por hora (5 por defecto).
+   - `APP_RATE_LIMIT_SEGUIMIENTO_PER_MINUTE`, `APP_RATE_LIMIT_SEGUIMIENTO_ATTEMPTS_PER_15_MIN` y `APP_RATE_LIMIT_SEGUIMIENTO_FAILED_PER_15_MIN`: límites de seguimiento público por IP. Los contadores se comparten entre instancias mediante PostgreSQL.
    - `APP_MAX_REQUEST_BODY_SIZE`: máximo para cuerpos HTTP no multipart (`1MB` por defecto).
    - `APP_MULTIPART_MAX_FILE_SIZE` y `APP_MULTIPART_MAX_REQUEST_SIZE`: límites de subida multipart (`5MB` por archivo y `25MB` por petición, por defecto).
    - `APP_PRIVACY_POLICY_VERSION`, `APP_CHAT_LOG_RETENTION_MONTHS` y `APP_CHAT_LOG_RETENTION_CRON`: versión de consentimiento y política de retención de consultas del chat.
@@ -53,7 +58,7 @@ Desde PowerShell, ejecuta el script de desarrollo en la raíz del proyecto:
 .\run-dev.ps1
 ```
 
-Antes de usarlo, revisa `run-dev.ps1` y ajusta `FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`, `APP_ADMIN_EMAILS`, `DB_URL` y `DB_USER` a tu entorno. El script comprueba que exista el archivo de credenciales de Firebase y solicita la contraseña de PostgreSQL al ejecutarse; no la guarda en el archivo. Si `APP_CAPTCHA_SECRET` no está definida, solicita de forma oculta la Secret key de Turnstile. Si `FIREBASE_WEB_API_KEY` no está definida, la solicita opcionalmente. Si la clave web del frontend tiene una restricción de HTTP referrer, usa una clave API separada para el backend, sin esa restricción de aplicación y limitada a Identity Toolkit API. La base de datos indicada en `DB_URL` debe existir.
+Antes de usarlo, revisa `run-dev.ps1` y ajusta `FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`, `APP_ADMIN_EMAILS`, `DB_URL` y `DB_USER` a tu entorno. El script comprueba que exista el archivo de credenciales de Firebase y solicita la contraseña de PostgreSQL al ejecutarse; no la guarda en el archivo. Si falta `APP_CAPTCHA_SECRET`, usa una clave de prueba de Turnstile únicamente en perfil `dev`; el frontend local debe usar la sitekey de prueba correspondiente. No copies esas claves al entorno productivo. Configura SMTP en el entorno si necesitas probar el envío real. La base de datos indicada en `DB_URL` debe existir.
 Activa el perfil `dev` en la terminal antes de iniciarlo para habilitar los datos de demostración y los orígenes localhost:
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "dev"
@@ -89,7 +94,7 @@ Para que el frontend consuma este backend, configura las variables de entorno de
 ```properties
 VITE_API_URL=http://localhost:8080
 ```
-El backend cuenta con CORS configurado para permitir peticiones desde `http://localhost:5173` (el puerto por defecto de Vite/React).
+En el perfil `dev`, CORS permite `http://localhost:5173` (puerto por defecto de Vite). En otros entornos, agrega explícitamente el origen del frontend a `APP_CORS_ALLOWED_ORIGINS`.
 
 ---
 
@@ -101,15 +106,68 @@ El backend cuenta con CORS configurado para permitir peticiones desde `http://lo
 | **GET** | `/api/servicios` | Retorna los servicios ofrecidos organizados por bloque (`CIVIL` o `SST`). |
 | **GET** | `/api/datos-legales` | Devuelve el NIT y la dirección física de la empresa. |
 | **GET** | `/api/proyectos` | Retorna el portafolio de proyectos. Opcionalmente filtrable por query param `?categoria=CIVIL` o `?categoria=SST`. |
-| **POST** | `/api/obras/seguimiento` | Recibe `{ "codigo": "..." }` y retorna solo el nombre, avance, hitos y fotos. Los códigos nuevos son aleatorios de alta entropía; la base de datos almacena únicamente su HMAC-SHA256. |
+| **POST** | `/api/obras/seguimiento` | Recibe `{ "codigo": "..." }` y retorna únicamente datos de seguimiento permitidos. |
+| **POST** | `/api/obras/seguimiento/fotos/{fotoId}` | Retorna una foto privada como `image/png`; requiere `{ "codigo": "..." }` en el cuerpo y límites por IP. |
 | **POST** | `/api/contacto` | Recibe `{ nombre, empresa, correo, telefono, tipoServicio, mensaje, aceptaPolitica, politicaVersion, sitioWeb }`. Requiere nombre, mensaje, consentimiento y al menos correo o teléfono; empresa, correo, teléfono y versión de política aceptan cadena vacía como ausente. El honeypot `sitioWeb` debe enviarse vacío. Cuando CAPTCHA está activo, requiere `X-Captcha-Token`. |
 | **POST** | `/api/newsletter` | Registra una suscripción con `{ correo, aceptaPolitica }`; usa `X-Captcha-Token` cuando CAPTCHA está activo. |
-| **POST** | `/api/auth/password-reset` | Solicita a Firebase un correo de restablecimiento; público, protegido por `X-Captcha-Token` y limitado por IP. Responde de forma genérica para no revelar si el correo está autorizado o registrado. |
+| **POST** | `/api/auth/password-reset` | Solicita un enlace oficial de Firebase y lo envía por SMTP; público, limitado por IP y sin requisito CAPTCHA. Responde de forma genérica para no revelar si el correo está autorizado o registrado. |
+| **POST** | `/api/auth/email-verification` | Requiere Firebase ID token, pero no sesión CAPTCHA verificada ni body. El destinatario se resuelve desde Firebase; envía un enlace oficial si la cuenta está activa y aún no verificada. |
 | **POST** | `/api/chat` | Recibe `{ pregunta }`, procesa una respuesta automática basada en palabras clave de normativas SST, la registra en base de datos y la retorna. |
 | **GET** | `/api/admin/consultas-chat?page=0&size=20` | Lista registros de chat paginados; requiere usuario administrador con sesión verificada. |
 | **GET** | `/api/riesgos/labores` | Retorna la lista de actividades/labores críticas de seguridad laboral. |
 | **GET** | `/api/riesgos/{laborId}` | Retorna la matriz de riesgos detallada y los EPP sugeridos para una labor en particular. |
 | **GET** | `/api/politicas-ambientales` | Devuelve la lista de políticas y compromisos de mitigación ambiental de la empresa. |
+
+### Contrato del panel de obras
+
+Todos los endpoints `/api/panel/**` requieren Firebase Authentication, sesión verificada y rol `ADMIN` o `INGENIERO`; las operaciones de clientes y rotación de códigos son exclusivas de `ADMIN`. El servidor comprueba además la asignación del ingeniero a cada obra.
+
+| Método | Endpoint | Acceso y respuesta |
+|---|---|---|
+| `GET` | `/api/panel/obras` | ADMIN: todas las obras activas; INGENIERO: solo las asignadas. |
+| `GET` | `/api/panel/obras/{id}` | Obra y fotos; comprueba el rol y la asignación. |
+| `GET` | `/api/panel/obras/clientes` | Solo ADMIN; devuelve usuarios activos con rol `CLIENTE` (`id`, `nombre`, `email`). |
+| `GET` | `/api/panel/obras/estados` | Estados válidos: `PLANIFICADA`, `EN_PROGRESO`, `PAUSADA`, `FINALIZADA`. |
+| `POST` | `/api/panel/obras` | Solo ADMIN; crea y devuelve `201 Created`. |
+| `PUT` | `/api/panel/obras/{id}` | Reemplazo completo; requiere todos los campos principales. Los hitos se reemplazan; campos opcionales omitidos o nulos se limpian. |
+| `PATCH` | `/api/panel/obras/{id}` | Actualización parcial: solo cambia los campos enviados; los omitidos se conservan. `null` limpia `descripcion` o fechas. |
+| `PATCH` | `/api/panel/obras/{id}/estado` | Cambia estado respetando transiciones válidas. |
+| `PATCH` | `/api/panel/obras/{id}/progreso` | Recibe `{ "progreso": 0..100 }`. |
+| `DELETE` | `/api/panel/obras/{id}` | Eliminación lógica; responde `204 No Content`. |
+| `POST` | `/api/panel/obras/{id}/codigo-seguimiento` | Solo ADMIN; rota el código y lo devuelve una única vez. |
+| `POST` | `/api/panel/obras/{id}/fotos` | Multipart: `archivo` y `descripcion` opcional. Responde la obra actualizada y su lista de fotos. |
+| `GET` | `/api/panel/obras/{id}/fotos/{fotoId}` | Descarga inline; requiere bearer token y permiso sobre la obra. |
+| `DELETE` | `/api/panel/obras/{id}/fotos/{fotoId}` | Elimina la foto; responde `204 No Content`. |
+
+El cuerpo de creación y reemplazo requiere `nombre`, `clienteId`, `categoria`, `estado` y `progreso`; `hitos` es opcional. `descripcion` (máximo 2000 caracteres), `fechaInicio` y `fechaFinEstimada` son opcionales, con fechas ISO `yyyy-MM-dd`; cuando ambas existen, la fecha fin no puede ser anterior a la de inicio. `categoria` admite `CIVIL` o `SST`. Ejemplo:
+
+```json
+{
+  "nombre": "Reforzamiento estructural",
+  "clienteId": 42,
+  "categoria": "CIVIL",
+  "estado": "PLANIFICADA",
+  "progreso": 0,
+  "descripcion": "Intervención de la estructura existente",
+  "fechaInicio": "2026-08-01",
+  "fechaFinEstimada": "2026-12-30",
+  "hitos": []
+}
+```
+
+`clienteId` debe identificar un usuario activo con rol `CLIENTE`; el texto `cliente` que algunos formularios antiguos envían no se usa para asignar el cliente. ADMIN asigna el cliente al crear o puede cambiarlo; INGENIERO no puede crear ni cambiar la asignación. Un administrador habilita una cuenta existente como cliente desde `PATCH /api/admin/usuarios/{id}` con `{ "rol": "CLIENTE" }`. Ningún DTO acepta que el cliente establezca `id`, roles, hash, borrado lógico o código de seguimiento.
+
+Las transiciones permitidas son `PLANIFICADA → EN_PROGRESO|PAUSADA`, `EN_PROGRESO → PAUSADA|FINALIZADA` y `PAUSADA → EN_PROGRESO|FINALIZADA`; `FINALIZADA` es terminal. La respuesta de obra incluye `id`, `nombre`, `cliente`, `clienteId`, `categoria`, `estado`, `progreso`, `descripcion`, fechas, `hitos` y `fotos`. Cada foto contiene `id`, `url`, `fecha`, `descripcion` y, solo en el panel autorizado, `subidoPor`.
+
+El frontend debe dejar de enviar `codigo` y seleccionar el cliente mediante `clienteId` obtenido de `/api/panel/obras/clientes`. Puede conservar `cliente` como etiqueta solo de lectura, pero el servidor lo ignora en escritura. Para editar sin perder campos no incluidos en el formulario debe usar `PATCH`; fechas y fechas límite se envían como cadenas `yyyy-MM-dd`. Las transiciones inválidas responden `409 Conflict` y los datos inválidos `400 Bad Request`.
+
+Para mostrar fotos del panel, el frontend debe descargar el endpoint protegido con `Authorization: Bearer <Firebase ID token>` y asignar la respuesta `Blob` a la vista; no debe usar una etiqueta `<img>` sin token. Para una consulta pública, `url` apunta a `/api/obras/seguimiento/fotos/{fotoId}`: el frontend debe hacer `POST` con `{ "codigo": "<código de seguimiento>" }` y mostrar la imagen Blob. El código no se incluye en la URL.
+
+### Códigos de seguimiento y transición de datos existentes
+
+Los códigos nuevos tienen 32 caracteres aleatorios generados por `SecureRandom`; PostgreSQL almacena solo HMAC-SHA256 con `APP_TRACKING_CODE_PEPPER`. `codigoSeguimiento` aparece únicamente en la respuesta de creación o rotación y debe tratarse como secreto de un solo acceso. Nunca se aceptan códigos enviados al crear obras ni se retornan hashes.
+
+La migración `V6` marca como legacy las obras que ya existían, sin recuperar ni revelar sus códigos originales. Mientras `APP_TRACKING_CODE_LEGACY_ENABLED=true`, esas obras solo se consultan comparando el código presentado contra su HMAC; las consultas tienen límites persistidos por IP y los errores no distinguen obras inexistentes. Para retirar el formato antiguo: entrega primero un código nuevo rotando cada obra existente mediante el endpoint ADMIN de rotación; comunica el código por un canal seguro; después configura `APP_TRACKING_CODE_LEGACY_ENABLED=false` y reinicia. Los códigos anteriores dejarán de funcionar; sus HMAC no necesitan ni deben revertirse. Las obras nuevas y las obras rotadas siempre usan el formato seguro de 32 caracteres.
 
 ### Consentimiento y retención de datos
 
@@ -119,17 +177,21 @@ El campo `tipoServicio` de contacto admite los valores del selector del frontend
 
 Los registros del chat se eliminan automáticamente según `APP_CHAT_LOG_RETENTION_MONTHS` (12 meses por defecto), en el horario definido por `APP_CHAT_LOG_RETENTION_CRON`.
 
-### Prueba de Seguimiento de Proyecto
-En el perfil `dev`, `DataLoader` precarga obras y fotos si la tabla de obras está vacía. Los códigos de demostración disponibles son:
+### Datos de desarrollo
 
-| Obra | Código | Avance |
-|---|---|---:|
-| Viaducto Metropolitano | `GG-2026-00125` | 74% |
-| Centro Logístico Industrial | `GG-2026-00218` | 58% |
-| Subestación Energía Norte | `GG-2026-00307` | 100% |
-| Programa SST Corredor Sur | `GYG-CIVIL-001` | 40% |
+En el perfil `dev`, `DataLoader` solo precarga obras cuando ya existe un usuario activo con rol `CLIENTE`; genera códigos aleatorios y guarda únicamente su HMAC. No hay códigos de demostración fijos. Las obras nuevas creadas desde el panel devuelven el código una vez. Al migrar códigos almacenados en texto plano, Flyway requiere `APP_TRACKING_CODE_PEPPER` y los sustituye por HMAC; nunca intentes reconstruir el valor original desde el hash.
 
-Ejemplo: `POST /api/obras/seguimiento` con el cuerpo `{"codigo":"GYG-CIVIL-001"}`. Al migrar los códigos existentes, Flyway requiere `APP_TRACKING_CODE_PEPPER` y reemplaza los valores en texto plano por HMAC.
+### CAPTCHA, sesiones y correo Firebase
+
+Turnstile usa `POST /api/auth/captcha/verify` con `{ "captchaToken": "<token>" }`. El frontend debe crear el widget con la acción `login` para ese endpoint; los formularios públicos usan `contacto` y `newsletter`. El backend verifica Siteverify por POST `application/x-www-form-urlencoded`, exige `success`, hostname permitido y acción coincidente. En producción, CAPTCHA habilitado exige secret y hostnames explícitos; el backend rechaza las claves públicas de prueba conocidas de Turnstile. Errores de proveedor/configuración devuelven `503` con un `code` interno; token inválido/expirado devuelve `400`; el límite devuelve `429` y `Retry-After`.
+
+Los hashes de tokens CAPTCHA usados, tickets de un solo uso y sesiones CAPTCHA verificadas se comparten mediante PostgreSQL (migración aditiva `V8`). Los tickets expiran según `APP_CAPTCHA_TICKET_TTL_SECONDS` (120 segundos por defecto) y se ligan a la IP que Spring obtiene del proxy confiable y al `User-Agent`. La IP se toma de `request.getRemoteAddr()` tanto para Siteverify como para rate limit y tickets. No se confía directamente en `X-Forwarded-For` ni en `CF-Connecting-IP`: limita el acceso al origen al proxy, configura `APP_TRUSTED_PROXIES` con sus rangos controlados y elige `APP_REMOTE_IP_HEADER`. En Cloudflare se puede usar `CF-Connecting-IP` solo si el origen no acepta conexiones directas y Cloudflare sobrescribe ese encabezado. Mantén actualizados los rangos del proxy según tu proveedor; no uses `.*`.
+
+El restablecimiento conserva `POST /api/auth/password-reset` con `{ "email": "..." }`. Firebase Admin SDK crea el enlace oficial mediante `generatePasswordResetLink()` y el servidor lo envía con la plantilla HTML corporativa. La respuesta aceptada es igual para correo no autorizado/no existente y para errores por cuenta o entrega, que se registran sin dirección, enlace ni credenciales; la falta global de configuración devuelve `503`. No se envían contraseñas ni se inventan códigos o URLs de acción.
+
+`POST /api/auth/email-verification` no acepta correo ni otro body: requiere autenticación Firebase, pero no requiere ticket CAPTCHA ni sesión verificada, para que una cuenta aún no verificada pueda pedir el mensaje. El backend usa el UID autenticado para consultar la cuenta de Firebase, rechaza cuentas inactivas/deshabilitadas, no reenvía si ya está verificada y limita las solicitudes por IP y cuenta. Responde `202 { "status": "sent" }` o `200 { "status": "already_verified" }`. Firebase genera el enlace con `generateEmailVerificationLink()`; los enlaces mantienen el handler oficial de Firebase.
+
+Para ambos correos configura `APP_MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME` y `SMTP_PASSWORD`. `SMTP_AUTH`, `SMTP_STARTTLS_ENABLE`, `SMTP_STARTTLS_REQUIRED` y los timeouts permiten ajustar el relay; no guardes credenciales SMTP en el repositorio. La cuenta debe actualizar su token de Firebase tras completar la verificación para que los claims y el rol reflejen el nuevo estado.
 
 ---
 
