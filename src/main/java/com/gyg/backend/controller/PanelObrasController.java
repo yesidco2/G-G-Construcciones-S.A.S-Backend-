@@ -1,8 +1,11 @@
 package com.gyg.backend.controller;
 
 import com.gyg.backend.dto.panel.EstadoObraRequest;
+import com.gyg.backend.dto.panel.ClienteObraResponse;
 import com.gyg.backend.dto.panel.ObraRequest;
 import com.gyg.backend.dto.panel.ObraResponse;
+import com.gyg.backend.dto.panel.ObraUpdateRequest;
+import com.gyg.backend.dto.panel.EstadoObra;
 import com.gyg.backend.dto.panel.ProgresoObraRequest;
 import com.gyg.backend.model.Usuario;
 import com.gyg.backend.service.PanelObrasService;
@@ -39,6 +42,17 @@ public class PanelObrasController {
         return ResponseEntity.ok(panelObrasService.listar(actor));
     }
 
+    @GetMapping("/clientes")
+    public ResponseEntity<List<ClienteObraResponse>> listarClientes(
+            @AuthenticationPrincipal Usuario actor) {
+        return ResponseEntity.ok(panelObrasService.listarClientes(actor));
+    }
+
+    @GetMapping("/estados")
+    public ResponseEntity<List<EstadoObra>> listarEstados() {
+        return ResponseEntity.ok(List.of(EstadoObra.values()));
+    }
+
     @GetMapping("/{obraId}")
     public ResponseEntity<ObraResponse> obtener(
             @PathVariable @Positive Long obraId,
@@ -65,6 +79,16 @@ public class PanelObrasController {
                 panelObrasService.actualizar(obraId, request, actor, httpRequest.getRemoteAddr()));
     }
 
+    @PatchMapping("/{obraId}")
+    public ResponseEntity<ObraResponse> actualizarParcial(
+            @PathVariable @Positive Long obraId,
+            @Valid @RequestBody ObraUpdateRequest request,
+            @AuthenticationPrincipal Usuario actor,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(panelObrasService.actualizarParcial(
+                obraId, request, actor, httpRequest.getRemoteAddr()));
+    }
+
     @PatchMapping("/{obraId}/estado")
     public ResponseEntity<ObraResponse> cambiarEstado(
             @PathVariable @Positive Long obraId,
@@ -85,12 +109,31 @@ public class PanelObrasController {
                 panelObrasService.cambiarProgreso(obraId, request, actor, httpRequest.getRemoteAddr()));
     }
 
+    @PostMapping("/{obraId}/codigo-seguimiento")
+    public ResponseEntity<ObraResponse> regenerarCodigoSeguimiento(
+            @PathVariable @Positive Long obraId,
+            @AuthenticationPrincipal Usuario actor,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(panelObrasService.regenerarCodigoSeguimiento(
+                obraId, actor, httpRequest.getRemoteAddr()));
+    }
+
     @DeleteMapping("/{obraId}")
     public ResponseEntity<Void> eliminar(
             @PathVariable @Positive Long obraId,
             @AuthenticationPrincipal Usuario actor,
             HttpServletRequest httpRequest) {
         panelObrasService.eliminarLogicamente(obraId, actor, httpRequest.getRemoteAddr());
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{obraId}/fotos/{fotoId}")
+    public ResponseEntity<Void> eliminarFoto(
+            @PathVariable @Positive Long obraId,
+            @PathVariable @Positive Long fotoId,
+            @AuthenticationPrincipal Usuario actor,
+            HttpServletRequest httpRequest) throws IOException {
+        panelObrasService.eliminarFoto(obraId, fotoId, actor, httpRequest.getRemoteAddr());
         return ResponseEntity.noContent().build();
     }
 
@@ -108,10 +151,11 @@ public class PanelObrasController {
     public ResponseEntity<ObraResponse> subirFoto(
             @PathVariable @Positive Long obraId,
             @RequestPart("archivo") MultipartFile archivo,
+            @RequestPart(value = "descripcion", required = false) String descripcion,
             @AuthenticationPrincipal Usuario actor,
             HttpServletRequest httpRequest) throws IOException {
         return ResponseEntity.ok(
-                panelObrasService.subirFoto(obraId, archivo, actor, httpRequest.getRemoteAddr()));
+                panelObrasService.subirFoto(obraId, archivo, descripcion, actor, httpRequest.getRemoteAddr()));
     }
 
     @GetMapping("/{obraId}/fotos/{fotoId}")
@@ -126,6 +170,7 @@ public class PanelObrasController {
                 .filename("foto-obra.png", StandardCharsets.UTF_8)
                 .build());
         headers.set("X-Content-Type-Options", "nosniff");
+        headers.setCacheControl("no-store");
         return new ResponseEntity<>(image.content(), headers, HttpStatus.OK);
     }
 }

@@ -18,6 +18,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
     List<Usuario> findAllByOrderByEmailAsc();
 
+    List<Usuario> findAllByRolAndActivoTrueOrderByNombreAsc(Rol rol);
+
     long countByRolAndActivoTrue(Rol rol);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

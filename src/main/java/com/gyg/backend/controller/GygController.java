@@ -3,7 +3,6 @@ package com.gyg.backend.controller;
 import com.gyg.backend.dto.*;
 import com.gyg.backend.service.GygService;
 import com.gyg.backend.service.RateLimitService;
-import com.gyg.backend.service.TrackingCodeService;
 import com.gyg.backend.service.CaptchaService;
 import com.gyg.backend.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,13 +13,18 @@ import jakarta.validation.Validator;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,9 +47,6 @@ public class GygController {
     private RateLimitService rateLimitService;
 
     @Autowired
-    private TrackingCodeService trackingCodeService;
-
-    @Autowired
     private CaptchaService captchaService;
 
     @Autowired
@@ -62,6 +63,12 @@ public class GygController {
 
     @Value("${app.rate-limit.seguimiento-per-minute:10}")
     private int seguimientoPerMinute;
+
+    @Value("${app.rate-limit.seguimiento-attempts-per-15-min:20}")
+    private int seguimientoAttemptsPer15Min;
+
+    @Value("${app.rate-limit.seguimiento-failed-per-15-min:5}")
+    private int seguimientoFailedPer15Min;
 
     @GetMapping("/institucional")
     @Operation(summary = "Obtener mision, vision y valores de la empresa")
@@ -174,22 +181,53 @@ public class GygController {
     @PostMapping("/obras/seguimiento")
     @Operation(summary = "Consultar el seguimiento de una obra por código de acceso")
     public ResponseEntity<SeguimientoObraDTO> getSeguimientoObra(
-            @RequestBody SeguimientoRequest request,
+            @Valid @RequestBody SeguimientoRequest request,
             HttpServletRequest httpRequest) {
-        rateLimitService.check(
-                "seguimiento", httpRequest, seguimientoPerMinute, Duration.ofMinutes(1),
-                "Has alcanzado el limite de consultas de seguimiento. Intenta nuevamente en un minuto.");
-        String codigo = request == null ? null : request.getCodigo();
+        rateLimitSeguimiento(httpRequest);
         try {
-            return ResponseEntity.ok(gygService.getSeguimientoProyecto(codigo));
+            return ResponseEntity.ok(gygService.getSeguimientoProyecto(request.getCodigo()));
         } catch (ResourceNotFoundException notFound) {
-            String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
             rateLimitService.check(
-                    "seguimiento-fallido-" + trackingCodeService.hash(candidate),
-                    httpRequest, 5, Duration.ofMinutes(15),
+                    "seguimiento-fallido",
+                    httpRequest, seguimientoFailedPer15Min, Duration.ofMinutes(15),
                     "Demasiados intentos de seguimiento. Intenta más tarde.");
             throw notFound;
         }
+    }
+
+    @PostMapping("/obras/seguimiento/fotos/{fotoId}")
+    @Operation(summary = "Descargar una foto de seguimiento usando su código de acceso")
+    public ResponseEntity<byte[]> getSeguimientoFoto(
+            @PathVariable @Positive Long fotoId,
+            @Valid @RequestBody SeguimientoRequest request,
+            HttpServletRequest httpRequest) throws IOException {
+        rateLimitSeguimiento(httpRequest);
+        try {
+            GygService.StoredImage image = gygService.getSeguimientoFoto(request.getCodigo(), fotoId);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType(image.contentType()));
+            headers.setContentDisposition(ContentDisposition.inline()
+                    .filename("foto-seguimiento.png", StandardCharsets.UTF_8)
+                    .build());
+            headers.set("X-Content-Type-Options", "nosniff");
+            headers.setCacheControl("no-store");
+            return new ResponseEntity<>(image.content(), headers, HttpStatus.OK);
+        } catch (ResourceNotFoundException notFound) {
+            rateLimitService.check(
+                    "seguimiento-fallido",
+                    httpRequest, seguimientoFailedPer15Min, Duration.ofMinutes(15),
+                    "Demasiados intentos de seguimiento. Intenta más tarde.");
+            throw notFound;
+        }
+    }
+
+    private void rateLimitSeguimiento(HttpServletRequest request) {
+        rateLimitService.check(
+                "seguimiento-intentos", request, seguimientoAttemptsPer15Min, Duration.ofMinutes(15),
+                "Has alcanzado el límite de consultas de seguimiento. Intenta más tarde.");
+        rateLimitService.check(
+                "seguimiento", request, seguimientoPerMinute, Duration.ofMinutes(1),
+                "Has alcanzado el limite de consultas de seguimiento. Intenta nuevamente en un minuto.");
     }
 
     @GetMapping("/riesgos/labores")

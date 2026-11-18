@@ -3,6 +3,7 @@ package com.gyg.backend.model;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,6 +21,9 @@ public class Obra {
     @Column(name = "codigo_hash", nullable = false, unique = true, length = 64)
     private String codigoHash;
 
+    @Column(name = "codigo_legacy", nullable = false)
+    private boolean codigoLegacy;
+
     @Column(nullable = false)
     private String estado = "EN_PROGRESO";
 
@@ -34,6 +38,15 @@ public class Obra {
 
     @Column(name = "categoria", nullable = false)
     private String categoria = "CIVIL";
+
+    @Column(name = "descripcion", length = 2000)
+    private String descripcion;
+
+    @Column(name = "fecha_inicio")
+    private LocalDate fechaInicio;
+
+    @Column(name = "fecha_fin_estimada")
+    private LocalDate fechaFinEstimada;
 
     @Column(name = "eliminada_en")
     private LocalDateTime eliminadaEn;
@@ -82,6 +95,14 @@ public class Obra {
         this.codigoHash = codigoHash;
     }
 
+    public boolean isCodigoLegacy() {
+        return codigoLegacy;
+    }
+
+    public void setCodigoLegacy(boolean codigoLegacy) {
+        this.codigoLegacy = codigoLegacy;
+    }
+
     public String getEstado() {
         return estado;
     }
@@ -120,6 +141,30 @@ public class Obra {
 
     public void setCategoria(String categoria) {
         this.categoria = categoria;
+    }
+
+    public String getDescripcion() {
+        return descripcion;
+    }
+
+    public void setDescripcion(String descripcion) {
+        this.descripcion = descripcion;
+    }
+
+    public LocalDate getFechaInicio() {
+        return fechaInicio;
+    }
+
+    public void setFechaInicio(LocalDate fechaInicio) {
+        this.fechaInicio = fechaInicio;
+    }
+
+    public LocalDate getFechaFinEstimada() {
+        return fechaFinEstimada;
+    }
+
+    public void setFechaFinEstimada(LocalDate fechaFinEstimada) {
+        this.fechaFinEstimada = fechaFinEstimada;
     }
 
     public LocalDateTime getEliminadaEn() {

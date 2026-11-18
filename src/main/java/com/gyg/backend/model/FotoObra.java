@@ -24,6 +24,9 @@ public class FotoObra {
     @Column(name = "subido_por")
     private String subidoPor;
 
+    @Column(name = "descripcion", length = 1000)
+    private String descripcion;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "obra_id", nullable = false)
     private Obra obra;
@@ -80,6 +83,14 @@ public class FotoObra {
 
     public void setSubidoPor(String subidoPor) {
         this.subidoPor = subidoPor;
+    }
+
+    public String getDescripcion() {
+        return descripcion;
+    }
+
+    public void setDescripcion(String descripcion) {
+        this.descripcion = descripcion;
     }
 
     public Obra getObra() {

@@ -42,6 +42,15 @@ class ObraPhotoStorageServiceTest {
     }
 
     @Test
+    void shouldRejectMimeTypeThatDoesNotMatchTheImageContent() throws Exception {
+        ObraPhotoStorageService storage = new ObraPhotoStorageService(storageDirectory.toString());
+        MockMultipartFile upload = new MockMultipartFile(
+                "archivo", "image.png", "image/jpeg", createPng());
+
+        assertThrows(IllegalArgumentException.class, () -> storage.store(upload));
+    }
+
+    @Test
     void shouldRejectPathTraversalKeys() {
         ObraPhotoStorageService storage = new ObraPhotoStorageService(storageDirectory.toString());
 

@@ -10,4 +10,6 @@ public interface FotoObraRepository extends JpaRepository<FotoObra, Long> {
     long countByObra_Id(Long obraId);
 
     Optional<FotoObra> findByIdAndObra_Id(Long id, Long obraId);
+
+    Optional<FotoObra> findByIdAndObra_CodigoHashAndStorageKeyIsNotNull(Long id, String codigoHash);
 }

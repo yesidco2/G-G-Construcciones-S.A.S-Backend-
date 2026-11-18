@@ -15,6 +15,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -35,8 +37,23 @@ public class ObraPhotoStorageService {
             throw new IllegalArgumentException("La imagen debe tener contenido y no superar 5 MB.");
         }
 
+        String contentType = file.getContentType();
+        String normalizedContentType = contentType == null
+                ? null
+                : contentType.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+        Map<String, String> formatsByMimeType = Map.of(
+                "image/jpeg", "jpeg",
+                "image/png", "png",
+                "image/webp", "webp");
+        String declaredFormat = formatsByMimeType.get(normalizedContentType);
+        if (declaredFormat == null) {
+            throw new IllegalArgumentException("Solo se permiten imágenes JPEG, PNG o WebP.");
+        }
+
         byte[] source = file.getBytes();
-        detectFormat(source);
+        if (!declaredFormat.equals(detectFormat(source))) {
+            throw new IllegalArgumentException("El tipo MIME no coincide con el contenido de la imagen.");
+        }
         BufferedImage decoded = decodeImage(source);
         BufferedImage cleanImage = new BufferedImage(
                 decoded.getWidth(), decoded.getHeight(), BufferedImage.TYPE_INT_ARGB);

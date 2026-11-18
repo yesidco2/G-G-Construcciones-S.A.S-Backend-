@@ -37,8 +37,8 @@ public class AdministradorAutorizado {
         }
         if (rol == null) {
             rol = Rol.INGENIERO;
-        } else if (rol == Rol.USUARIO) {
-            throw new IllegalStateException("Una autorización debe tener rol INGENIERO o ADMIN.");
+        } else if (rol == Rol.USUARIO || rol == Rol.CLIENTE) {
+            throw new IllegalStateException("Solo se pueden autorizar los roles INGENIERO o ADMIN.");
         }
         if (creadoEn == null) {
             creadoEn = LocalDateTime.now();

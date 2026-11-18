@@ -44,6 +44,12 @@ public class GygService {
     private ObraRepository obraRepository;
 
     @Autowired
+    private FotoObraRepository fotoObraRepository;
+
+    @Autowired
+    private ObraPhotoStorageService photoStorage;
+
+    @Autowired
     private SolicitudContactoRepository solicitudContactoRepository;
 
     @Autowired
@@ -60,6 +66,9 @@ public class GygService {
 
     @Value("${app.privacy.policy-version:2026-01}")
     private String policyVersion;
+
+    @Value("${app.tracking-code.legacy-enabled:true}")
+    private boolean legacyTrackingCodesEnabled;
 
     // 1. GET /api/institucional
     public InstitucionalDTO getInstitucional() {
@@ -190,20 +199,16 @@ public class GygService {
 
     // 7. POST /api/obras/seguimiento
     public SeguimientoObraDTO getSeguimientoProyecto(String codigo) {
-        String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
-        String codeHash = trackingCodeService.hash(candidate);
-        Optional<Obra> found = obraRepository.findByCodigoHashWithFotosAndHitos(codeHash);
-        boolean codeMatches = trackingCodeService.matches(
-                candidate, found.map(Obra::getCodigoHash).orElse(DUMMY_TRACKING_HASH));
-        boolean validFormat = TRACKING_CODE_PATTERN.matcher(candidate).matches()
-                || LEGACY_TRACKING_CODE_PATTERN.matcher(candidate).matches();
-        if (found.isEmpty() || !validFormat || !codeMatches) {
-            throw new ResourceNotFoundException("No se encontró el proyecto solicitado.");
-        }
-        Obra obra = found.get();
+        Obra obra = findTrackedWork(codigo);
 
         List<FotoObraDTO> fotosObra = obra.getFotos().stream()
-                .map(f -> new FotoObraDTO(f.getUrl(), f.getFecha()))
+                .map(f -> new FotoObraDTO(
+                        f.getId(),
+                        f.getStorageKey() == null
+                                ? f.getUrl()
+                                : "/api/obras/seguimiento/fotos/" + f.getId(),
+                        f.getFecha(),
+                        f.getDescripcion()))
                 .collect(Collectors.toList());
         List<SeguimientoHitoDTO> hitos = obra.getHitos().stream()
                 .map(hito -> new SeguimientoHitoDTO(
@@ -213,6 +218,30 @@ public class GygService {
 
         return new SeguimientoObraDTO(
                 obra.getNombreObra(), obra.getPorcentajeAvance(), hitos, fotosObra);
+    }
+
+    public StoredImage getSeguimientoFoto(String codigo, Long fotoId) throws java.io.IOException {
+        Obra obra = findTrackedWork(codigo);
+        FotoObra foto = fotoObraRepository.findByIdAndObra_CodigoHashAndStorageKeyIsNotNull(
+                        fotoId, obra.getCodigoHash())
+                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el proyecto solicitado."));
+        return new StoredImage(photoStorage.read(foto.getStorageKey()), "image/png");
+    }
+
+    private Obra findTrackedWork(String codigo) {
+        String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
+        String codeHash = trackingCodeService.hash(candidate);
+        Optional<Obra> found = obraRepository.findByCodigoHashWithFotosAndHitos(codeHash);
+        boolean codeMatches = trackingCodeService.matches(
+                candidate, found.map(Obra::getCodigoHash).orElse(DUMMY_TRACKING_HASH));
+        boolean legacyCode = found.map(Obra::isCodigoLegacy).orElse(false);
+        boolean secureFormat = !legacyCode && TRACKING_CODE_PATTERN.matcher(candidate).matches();
+        boolean legacyFormat = legacyCode && legacyTrackingCodesEnabled
+                && LEGACY_TRACKING_CODE_PATTERN.matcher(candidate).matches();
+        if (found.isEmpty() || (!secureFormat && !legacyFormat) || !codeMatches) {
+            throw new ResourceNotFoundException("No se encontró el proyecto solicitado.");
+        }
+        return found.get();
     }
 
     // 8. GET /api/riesgos/labores
@@ -317,6 +346,9 @@ public class GygService {
             return "https://images.unsplash.com/photo-1581092921461-eab62e97a2d6?auto=format&fit=crop&w=900&q=80";
         }
         return "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=900&q=80";
+    }
+
+    public record StoredImage(byte[] content, String contentType) {
     }
 
 }

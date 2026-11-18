@@ -65,6 +65,18 @@ public class PanelObrasService {
     }
 
     @Transactional(readOnly = true)
+    public List<ClienteObraResponse> listarClientes(Usuario actor) {
+        requireAdmin(actor);
+        return usuarioRepository.findAllByRolAndActivoTrueOrderByNombreAsc(Rol.CLIENTE).stream()
+                .map(cliente -> new ClienteObraResponse(
+                        cliente.getId(),
+                        cliente.getNombre() == null || cliente.getNombre().isBlank()
+                                ? cliente.getEmail() : cliente.getNombre(),
+                        cliente.getEmail()))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public ObraResponse obtener(Long obraId, Usuario actor) {
         Obra obra = loadActive(obraId);
         requireCanOperate(obra, actor);
@@ -73,15 +85,13 @@ public class PanelObrasService {
 
     @Transactional
     public ObraResponse crear(ObraRequest request, Usuario actor, String ip) {
-        requireEngineerOrAdmin(actor);
+        requireAdmin(actor);
         Obra obra = new Obra();
-        applyRequest(obra, request);
+        applyRequest(obra, request, resolveClient(request.getClienteId()));
         TrackingCodeService.GeneratedTrackingCode generatedCode = trackingCodeService.generate();
         obra.setCodigoHash(generatedCode.hash());
+        obra.setCodigoLegacy(false);
         Obra saved = obraRepository.saveAndFlush(obra);
-        if (actor.getRol() == Rol.INGENIERO) {
-            assignmentRepository.save(new ObraIngeniero(saved, actor, actor.getFirebaseUid()));
-        }
         audit(actor, "OBRA_CREADA", saved.getId(), ip);
         return toResponse(saved, generatedCode.value());
     }
@@ -90,7 +100,78 @@ public class PanelObrasService {
     public ObraResponse actualizar(Long obraId, ObraRequest request, Usuario actor, String ip) {
         Obra obra = loadForUpdate(obraId);
         requireCanOperate(obra, actor);
-        applyRequest(obra, request);
+        if (actor.getRol() != Rol.ADMIN && !obra.getClienteId().equals(request.getClienteId())) {
+            throw new AccessDeniedException("Solo un administrador puede cambiar el cliente de una obra.");
+        }
+        Usuario client = obra.getClienteId().equals(request.getClienteId())
+                ? null : resolveClient(request.getClienteId());
+        applyRequest(obra, request, client);
+        audit(actor, "OBRA_ACTUALIZADA", obra.getId(), ip);
+        return toResponse(obra);
+    }
+
+    @Transactional
+    public ObraResponse actualizarParcial(
+            Long obraId, ObraUpdateRequest request, Usuario actor, String ip) {
+        Obra obra = loadForUpdate(obraId);
+        requireCanOperate(obra, actor);
+        if (!(request.hasNombre() || request.hasClienteId() || request.hasCategoria()
+                || request.hasEstado() || request.hasProgreso() || request.hasDescripcion()
+                || request.hasFechaInicio() || request.hasFechaFinEstimada() || request.hasHitos())) {
+            throw new IllegalArgumentException("Debes indicar al menos un campo para actualizar.");
+        }
+
+        if (request.hasNombre()) {
+            if (request.getNombre() == null || request.getNombre().isBlank()) {
+                throw new IllegalArgumentException("El nombre de la obra es obligatorio.");
+            }
+            obra.setNombreObra(request.getNombre().trim());
+        }
+        if (request.hasClienteId()) {
+            if (request.getClienteId() == null) {
+                throw new IllegalArgumentException("El cliente de la obra es obligatorio.");
+            }
+            if (actor.getRol() != Rol.ADMIN && !obra.getClienteId().equals(request.getClienteId())) {
+                throw new AccessDeniedException("Solo un administrador puede cambiar el cliente de una obra.");
+            }
+            if (!obra.getClienteId().equals(request.getClienteId())) {
+                setClient(obra, resolveClient(request.getClienteId()));
+            }
+        }
+        if (request.hasCategoria()) {
+            if (request.getCategoria() == null || request.getCategoria().isBlank()) {
+                throw new IllegalArgumentException("La categoría de la obra es obligatoria.");
+            }
+            obra.setCategoria(request.getCategoria());
+        }
+        if (request.hasEstado()) {
+            if (request.getEstado() == null) {
+                throw new IllegalArgumentException("El estado de la obra es obligatorio.");
+            }
+            validateTransition(obra, request.getEstado());
+            obra.setEstado(request.getEstado().name());
+        }
+        if (request.hasProgreso()) {
+            validateProgress(request.getProgreso());
+            obra.setPorcentajeAvance(request.getProgreso());
+        }
+        if (request.hasDescripcion()) {
+            obra.setDescripcion(trimToNull(request.getDescripcion()));
+        }
+        if (request.hasFechaInicio()) {
+            obra.setFechaInicio(request.getFechaInicio());
+        }
+        if (request.hasFechaFinEstimada()) {
+            obra.setFechaFinEstimada(request.getFechaFinEstimada());
+        }
+        validateDateRange(obra.getFechaInicio(), obra.getFechaFinEstimada());
+        if (request.hasHitos()) {
+            obra.clearHitos();
+            if (request.getHitos() != null) {
+                request.getHitos().forEach(input -> obra.addHito(toHito(input)));
+            }
+        }
+
         audit(actor, "OBRA_ACTUALIZADA", obra.getId(), ip);
         return toResponse(obra);
     }
@@ -99,6 +180,7 @@ public class PanelObrasService {
     public ObraResponse cambiarEstado(Long obraId, EstadoObraRequest request, Usuario actor, String ip) {
         Obra obra = loadForUpdate(obraId);
         requireCanOperate(obra, actor);
+        validateTransition(obra, request.getEstado());
         obra.setEstado(request.getEstado().name());
         audit(actor, "ESTADO_CAMBIADO", obra.getId(), ip);
         return toResponse(obra);
@@ -112,6 +194,17 @@ public class PanelObrasService {
         obra.setPorcentajeAvance(request.getProgreso());
         audit(actor, "PROGRESO_ACTUALIZADO", obra.getId(), ip);
         return toResponse(obra);
+    }
+
+    @Transactional
+    public ObraResponse regenerarCodigoSeguimiento(Long obraId, Usuario actor, String ip) {
+        requireAdmin(actor);
+        Obra obra = loadForUpdate(obraId);
+        TrackingCodeService.GeneratedTrackingCode generatedCode = trackingCodeService.generate();
+        obra.setCodigoHash(generatedCode.hash());
+        obra.setCodigoLegacy(false);
+        audit(actor, "CODIGO_SEGUIMIENTO_ROTADO", obra.getId(), ip);
+        return toResponse(obra, generatedCode.value());
     }
 
     @Transactional
@@ -140,11 +233,16 @@ public class PanelObrasService {
     }
 
     @Transactional
-    public ObraResponse subirFoto(Long obraId, MultipartFile file, Usuario actor, String ip) throws IOException {
+    public ObraResponse subirFoto(
+            Long obraId, MultipartFile file, String description, Usuario actor, String ip) throws IOException {
         Obra obra = loadForUpdate(obraId);
         requireCanOperate(obra, actor);
         if (file == null || file.getSize() > MAX_PHOTO_BYTES) {
             throw new IllegalArgumentException("La imagen no puede superar 5 MB.");
+        }
+        String normalizedDescription = trimToNull(description);
+        if (normalizedDescription != null && normalizedDescription.length() > 1000) {
+            throw new IllegalArgumentException("La descripción de la fotografía no puede superar 1000 caracteres.");
         }
         if (fotoRepository.countByObra_Id(obraId) >= MAX_PHOTOS_PER_OBRA) {
             throw new ConflictException("La obra alcanzó el máximo de 20 fotografías.");
@@ -155,6 +253,7 @@ public class PanelObrasService {
             FotoObra foto = new FotoObra("pending", LocalDate.now(), obra);
             foto.setStorageKey(stored.key());
             foto.setSubidoPor(actor.getFirebaseUid());
+            foto.setDescripcion(normalizedDescription);
             FotoObra saved = fotoRepository.saveAndFlush(foto);
             saved.setUrl("/api/panel/obras/" + obraId + "/fotos/" + saved.getId());
             audit(actor, "FOTO_SUBIDA", obraId, ip);
@@ -177,25 +276,89 @@ public class PanelObrasService {
         return new StoredImage(photoStorage.read(foto.getStorageKey()), "image/png");
     }
 
-    private void applyRequest(Obra obra, ObraRequest request) {
+    @Transactional
+    public void eliminarFoto(Long obraId, Long fotoId, Usuario actor, String ip) throws IOException {
+        Obra obra = loadForUpdate(obraId);
+        requireCanOperate(obra, actor);
+        FotoObra foto = fotoRepository.findByIdAndObra_Id(fotoId, obraId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la fotografía solicitada."));
+        if (foto.getStorageKey() != null) {
+            photoStorage.delete(foto.getStorageKey());
+        }
+        fotoRepository.delete(foto);
+        audit(actor, "FOTO_ELIMINADA", obraId, ip);
+    }
+
+    private void applyRequest(Obra obra, ObraRequest request, Usuario client) {
         validateProgress(request.getProgreso());
+        validateDateRange(request.getFechaInicio(), request.getFechaFinEstimada());
+        EstadoObra nextState = request.getEstado();
+        if (obra.getId() != null) {
+            validateTransition(obra, nextState);
+        }
         obra.setNombreObra(request.getNombre().trim());
-        obra.setCliente(request.getCliente().trim());
-        obra.setClienteId(request.getClienteId());
+        if (client != null) {
+            setClient(obra, client);
+        } else if (obra.getId() == null) {
+            throw new IllegalArgumentException("El cliente de la obra es obligatorio.");
+        }
         obra.setCategoria(request.getCategoria());
-        obra.setEstado(request.getEstado().name());
+        obra.setEstado(nextState.name());
         obra.setPorcentajeAvance(request.getProgreso());
+        obra.setDescripcion(trimToNull(request.getDescripcion()));
+        obra.setFechaInicio(request.getFechaInicio());
+        obra.setFechaFinEstimada(request.getFechaFinEstimada());
         obra.clearHitos();
         if (request.getHitos() != null) {
-            request.getHitos().forEach(input -> {
-                HitoObra hito = new HitoObra();
-                hito.setNombre(input.getNombre().trim());
-                hito.setDescripcion(input.getDescripcion());
-                hito.setFechaObjetivo(input.getFechaObjetivo());
-                hito.setCompletado(input.isCompletado());
-                obra.addHito(hito);
-            });
+            request.getHitos().forEach(input -> obra.addHito(toHito(input)));
         }
+    }
+
+    private Usuario resolveClient(Long clientId) {
+        if (clientId == null) {
+            throw new IllegalArgumentException("El cliente de la obra es obligatorio.");
+        }
+        return usuarioRepository.findById(clientId)
+                .filter(Usuario::isActivo)
+                .filter(usuario -> usuario.getRol() == Rol.CLIENTE)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el cliente solicitado."));
+    }
+
+    private static void setClient(Obra obra, Usuario client) {
+        obra.setClienteId(client.getId());
+        obra.setCliente(client.getNombre() == null || client.getNombre().isBlank()
+                ? client.getEmail() : client.getNombre());
+    }
+
+    private static HitoObra toHito(HitoObraRequest input) {
+        HitoObra hito = new HitoObra();
+        hito.setNombre(input.getNombre().trim());
+        hito.setDescripcion(input.getDescripcion());
+        hito.setFechaObjetivo(input.getFechaObjetivo());
+        hito.setCompletado(input.isCompletado());
+        return hito;
+    }
+
+    private static void validateTransition(Obra obra, EstadoObra nextState) {
+        EstadoObra current;
+        try {
+            current = EstadoObra.valueOf(obra.getEstado());
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new ConflictException("La obra tiene un estado que requiere revisión administrativa.");
+        }
+        if (current != nextState && !current.permiteTransicionA(nextState)) {
+            throw new ConflictException("La transición de estado de la obra no está permitida.");
+        }
+    }
+
+    private static void validateDateRange(LocalDate start, LocalDate end) {
+        if (start != null && end != null && end.isBefore(start)) {
+            throw new IllegalArgumentException("La fecha fin estimada no puede ser anterior a la fecha de inicio.");
+        }
+    }
+
+    private static String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private Obra loadActive(Long obraId) {
@@ -252,14 +415,16 @@ public class PanelObrasService {
                 .toList();
         List<FotoObraResponse> fotos = obra.getFotos().stream()
                 .map(foto -> new FotoObraResponse(
-                        foto.getId(), foto.getFecha(), foto.getSubidoPor(),
+                        foto.getId(),
                         foto.getStorageKey() == null
                                 ? foto.getUrl()
-                                : "/api/panel/obras/" + obra.getId() + "/fotos/" + foto.getId()))
+                                : "/api/panel/obras/" + obra.getId() + "/fotos/" + foto.getId(),
+                        foto.getFecha(), foto.getDescripcion(), foto.getSubidoPor()))
                 .toList();
         return new ObraResponse(
                 obra.getId(), obra.getNombreObra(), obra.getCliente(), obra.getClienteId(),
-                obra.getCategoria(), obra.getEstado(), obra.getPorcentajeAvance(), hitos, fotos, trackingCode);
+                obra.getCategoria(), obra.getEstado(), obra.getPorcentajeAvance(), obra.getDescripcion(),
+                obra.getFechaInicio(), obra.getFechaFinEstimada(), hitos, fotos, trackingCode);
     }
 
     public record StoredImage(byte[] content, String contentType) {

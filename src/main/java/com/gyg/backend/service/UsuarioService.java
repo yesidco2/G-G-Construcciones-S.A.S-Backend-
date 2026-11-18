@@ -65,12 +65,13 @@ public class UsuarioService {
         Object name = claims.get("name");
         String nombre = name instanceof String value ? value : null;
 
+        Rol assignedRole = usuario.getRol() == Rol.CLIENTE ? Rol.CLIENTE : Rol.USUARIO;
         Rol rol = emailVerificado && normalizedEmail != null
                 ? administradorRepository.findByEmail(normalizedEmail)
                         .filter(AdministradorAutorizado::isActivo)
                         .map(AdministradorAutorizado::getRol)
-                        .orElse(Rol.USUARIO)
-                : Rol.USUARIO;
+                        .orElse(assignedRole)
+                : assignedRole;
         boolean changed = !java.util.Objects.equals(usuario.getEmail(), normalizedEmail)
                 || usuario.isEmailVerificado() != emailVerificado
                 || !java.util.Objects.equals(usuario.getNombre(), nombre)

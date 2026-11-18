@@ -88,6 +88,27 @@ class UsuarioServiceTest {
     }
 
     @Test
+    void preservesClientRoleAssignedByAnAdministrator() {
+        usuario.setRol(Rol.CLIENTE);
+        when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
+
+        Usuario result = usuarioService.obtenerOCrear(
+                "firebase-uid", "Admin@Example.com", true, Map.of("name", "Cliente"));
+
+        assertEquals(Rol.CLIENTE, result.getRol());
+    }
+
+    @Test
+    void doesNotAllowAnOrdinaryUserToAcquireClientRoleFromAnUntrustedToken() {
+        when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
+
+        Usuario result = usuarioService.obtenerOCrear(
+                "firebase-uid", "Admin@Example.com", true, Map.of("role", "CLIENTE"));
+
+        assertEquals(Rol.USUARIO, result.getRol());
+    }
+
+    @Test
     void doesNotSaveUserWhenVerifiedTokenDataHasNotChanged() {
         usuario.setEmail("admin@example.com");
         usuario.setNombre("Admin");

@@ -148,7 +148,7 @@ public class AdministracionService {
             Rol nuevoRol,
             Usuario actor,
             AdministradorAutorizado autorizacion) {
-        if (nuevoRol == Rol.USUARIO) {
+        if (nuevoRol == Rol.USUARIO || nuevoRol == Rol.CLIENTE) {
             if (autorizacion != null) {
                 autorizadoRepository.delete(autorizacion);
             }
@@ -156,7 +156,7 @@ public class AdministracionService {
         }
 
         if (usuario.getEmail() == null || usuario.getEmail().isBlank()) {
-            throw new ConflictException("No se puede asignar un rol administrativo a un usuario sin correo.");
+            throw new ConflictException("No se puede asignar un rol autorizado a un usuario sin correo.");
         }
         AdministradorAutorizado autorizada = autorizacion == null
                 ? new AdministradorAutorizado()

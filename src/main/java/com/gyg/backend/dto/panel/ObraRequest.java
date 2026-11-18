@@ -10,7 +10,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.AssertTrue;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,7 +23,6 @@ public class ObraRequest {
     @Size(max = 255)
     private String nombre;
 
-    @NotBlank
     @Size(max = 255)
     private String cliente;
 
@@ -41,9 +42,22 @@ public class ObraRequest {
     @Max(100)
     private Integer progreso;
 
+    @Size(max = 2000)
+    private String descripcion;
+
+    private LocalDate fechaInicio;
+
+    private LocalDate fechaFinEstimada;
+
     @Valid
     @Size(max = 50)
     private List<HitoObraRequest> hitos = new ArrayList<>();
+
+    @AssertTrue(message = "La fecha fin estimada no puede ser anterior a la fecha de inicio.")
+    public boolean isRangoFechasValido() {
+        return fechaInicio == null || fechaFinEstimada == null
+                || !fechaFinEstimada.isBefore(fechaInicio);
+    }
 
     @JsonAnySetter
     public void rejectUnknownProperty(String property, Object value) {
@@ -96,6 +110,30 @@ public class ObraRequest {
 
     public void setProgreso(Integer progreso) {
         this.progreso = progreso;
+    }
+
+    public String getDescripcion() {
+        return descripcion;
+    }
+
+    public void setDescripcion(String descripcion) {
+        this.descripcion = descripcion;
+    }
+
+    public LocalDate getFechaInicio() {
+        return fechaInicio;
+    }
+
+    public void setFechaInicio(LocalDate fechaInicio) {
+        this.fechaInicio = fechaInicio;
+    }
+
+    public LocalDate getFechaFinEstimada() {
+        return fechaFinEstimada;
+    }
+
+    public void setFechaFinEstimada(LocalDate fechaFinEstimada) {
+        this.fechaFinEstimada = fechaFinEstimada;
     }
 
     public List<HitoObraRequest> getHitos() {
