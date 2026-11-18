@@ -20,7 +20,6 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import com.gyg.backend.service.CaptchaFailureCode;
 import com.gyg.backend.service.CaptchaVerificationException;
 import com.gyg.backend.service.EmailDeliveryException;
-import com.gyg.backend.service.PasswordResetUnavailableException;
 import com.gyg.backend.service.SecurityStateUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -102,16 +101,6 @@ public class GlobalExceptionHandler {
                 : "La verificación CAPTCHA no fue válida. Solicita un nuevo intento.";
         return createErrorResponse(
                 code.httpStatus(), code.httpStatus().getReasonPhrase(), message, code.responseCode(), request);
-    }
-
-    @ExceptionHandler(PasswordResetUnavailableException.class)
-    public ResponseEntity<Map<String, Object>> handlePasswordResetUnavailable(
-            PasswordResetUnavailableException ex,
-            WebRequest request) {
-        return createErrorResponse(
-                HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
-                "No fue posible procesar la solicitud. Intenta nuevamente más tarde.",
-                "PASSWORD_RESET_UNAVAILABLE", request);
     }
 
     @ExceptionHandler(EmailDeliveryException.class)

@@ -75,6 +75,7 @@ app:
     email-verification-per-hour: ${APP_RATE_LIMIT_EMAIL_VERIFICATION_PER_HOUR:3}
   mail:
     from: ${APP_MAIL_FROM:}
+    test-connection: ${APP_MAIL_TEST_CONNECTION:false}
   privacy:
     policy-version: ${APP_PRIVACY_POLICY_VERSION:2026-01}
     chat-retention-months: ${APP_CHAT_LOG_RETENTION_MONTHS:12}

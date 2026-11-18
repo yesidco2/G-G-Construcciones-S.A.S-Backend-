@@ -14,6 +14,7 @@ spring.mail.properties.mail.smtp.connectiontimeout=${SMTP_CONNECTION_TIMEOUT_MS:
 spring.mail.properties.mail.smtp.timeout=${SMTP_TIMEOUT_MS:5000}
 spring.mail.properties.mail.smtp.writetimeout=${SMTP_WRITE_TIMEOUT_MS:5000}
 app.mail.from=${APP_MAIL_FROM:}
+app.mail.test-connection=${APP_MAIL_TEST_CONNECTION:false}
 spring.jpa.show-sql=false
 app.cors.allowed-origins=${APP_CORS_ALLOWED_ORIGINS:}
 app.captcha.enabled=${APP_CAPTCHA_ENABLED:true}

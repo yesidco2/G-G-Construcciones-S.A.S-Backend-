@@ -86,8 +86,8 @@ public class EmailVerificationService {
                 logger.warn("Firebase email verification link generation failed with code {}.",
                         firebaseException.getAuthErrorCode());
             } else {
-                logger.error("Email verification delivery failed ({}).",
-                        exception.getClass().getSimpleName());
+                logger.error("Email verification delivery failed: {}.",
+                        SmtpFailureDiagnostics.describe(exception));
             }
             throw new EmailDeliveryException(exception);
         }

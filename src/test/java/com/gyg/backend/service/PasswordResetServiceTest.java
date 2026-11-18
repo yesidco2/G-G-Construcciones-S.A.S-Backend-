@@ -12,7 +12,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -94,7 +93,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void shouldFailExplicitlyWhenFirebaseOrSmtpConfigurationIsMissing() {
+    void shouldKeepResponseGenericWhenFirebaseIsUnavailable() {
         AdministradorAutorizadoRepository repository = mock(AdministradorAutorizadoRepository.class);
         ObjectProvider<FirebaseAuth> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(null);
@@ -102,8 +101,19 @@ class PasswordResetServiceTest {
         PasswordResetService service = new PasswordResetService(
                 repository, provider, mock(CustomEmailService.class));
 
-        assertThrows(PasswordResetUnavailableException.class, () -> service.request(EMAIL));
+        assertDoesNotThrow(() -> service.request(EMAIL));
         verifyNoInteractions(repository);
+    }
+
+    @Test
+    void shouldKeepResponseGenericWhenSmtpIsUnavailable() {
+        AdministradorAutorizadoRepository repository = mock(AdministradorAutorizadoRepository.class);
+        FirebaseAuth firebaseAuth = mock(FirebaseAuth.class);
+        CustomEmailService emailService = mock(CustomEmailService.class);
+        when(emailService.isConfigured()).thenReturn(false);
+
+        assertDoesNotThrow(() -> service(repository, firebaseAuth, emailService).request(EMAIL));
+        verifyNoInteractions(repository, firebaseAuth);
     }
 
     private static PasswordResetService service(

@@ -34,8 +34,13 @@ public class PasswordResetService {
     public void request(String email) {
         String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
         FirebaseAuth firebaseAuth = firebaseAuthProvider.getIfAvailable();
-        if (firebaseAuth == null || !emailService.isConfigured()) {
-            throw new PasswordResetUnavailableException();
+        if (firebaseAuth == null) {
+            logger.error("Password reset request skipped because Firebase Auth is unavailable.");
+            return;
+        }
+        if (!emailService.isConfigured()) {
+            logger.error("Password reset request skipped because SMTP is not configured.");
+            return;
         }
 
         boolean authorized = authorizationRepository.findByEmail(normalizedEmail)
@@ -61,8 +66,8 @@ public class PasswordResetService {
                 logger.warn("Firebase password reset link generation failed with code {}.", errorCode);
             }
         } catch (EmailDeliveryException exception) {
-            logger.error("Password reset email delivery failed ({}).",
-                    exception.getClass().getSimpleName());
+            logger.error("Password reset email delivery failed: {}.",
+                    SmtpFailureDiagnostics.describe(exception));
         }
     }
 }

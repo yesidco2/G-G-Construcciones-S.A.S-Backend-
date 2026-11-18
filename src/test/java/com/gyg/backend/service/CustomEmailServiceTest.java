@@ -6,11 +6,13 @@ import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.Multipart;
 import org.junit.jupiter.api.Test;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
@@ -58,6 +60,21 @@ class CustomEmailServiceTest {
 
         assertThrows(EmailDeliveryException.class,
                 () -> service.sendPasswordReset("owner@example.com", null, "https://example.com/action"));
+    }
+
+    @Test
+    void shouldRemoveOnlyGmailAppPasswordFormattingSpaces() {
+        JavaMailSenderImpl gmailSender = new JavaMailSenderImpl();
+        gmailSender.setPassword("abcd efgh ijkl mnop");
+        new CustomEmailService(gmailSender, "smtp.gmail.com", 587, "sender@example.com");
+
+        assertEquals("abcdefghijklmnop", gmailSender.getPassword());
+
+        JavaMailSenderImpl otherSender = new JavaMailSenderImpl();
+        otherSender.setPassword("password with spaces");
+        new CustomEmailService(otherSender, "smtp.example.com", 587, "sender@example.com");
+
+        assertEquals("password with spaces", otherSender.getPassword());
     }
 
     private static String findHtml(Part part) throws Exception {
