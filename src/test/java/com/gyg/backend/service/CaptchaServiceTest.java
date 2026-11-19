@@ -107,7 +107,7 @@ class CaptchaServiceTest {
         MockHttpServletRequest request = request("192.0.2.10", "Browser A");
         request.addHeader("X-Forwarded-For", "198.51.100.10");
 
-        service.verifySubmissionToken("provider-token", "contacto", request);
+        service.verifySubmissionToken("provider-token", "newsletter", request);
 
         assertEquals("192.0.2.10", verifiedIp.get());
     }
@@ -121,9 +121,9 @@ class CaptchaServiceTest {
         MockHttpServletRequest request = request("192.0.2.10", "Browser A");
 
         assertThrows(CaptchaService.InvalidCaptchaException.class,
-                () -> service.verifySubmissionToken("  ", "contacto", request));
+                () -> service.verifySubmissionToken("  ", "newsletter", request));
         assertThrows(CaptchaService.InvalidCaptchaException.class,
-                () -> service.verifySubmissionToken("x".repeat(2049), "contacto", request));
+                () -> service.verifySubmissionToken("x".repeat(2049), "newsletter", request));
         verifyNoInteractions(provider);
     }
 
@@ -136,10 +136,10 @@ class CaptchaServiceTest {
         }, Clock.systemUTC(), new MemoryStore());
         MockHttpServletRequest request = request("192.0.2.10", "Browser A");
 
-        service.verifySubmissionToken("single-use-token", "contacto", request);
+        service.verifySubmissionToken("single-use-token", "newsletter", request);
 
         assertThrows(CaptchaService.InvalidCaptchaException.class,
-                () -> service.verifySubmissionToken("single-use-token", "contacto", request));
+                () -> service.verifySubmissionToken("single-use-token", "newsletter", request));
         assertEquals(1, calls.get());
     }
 

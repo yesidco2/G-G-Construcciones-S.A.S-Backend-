@@ -29,7 +29,7 @@ class CaptchaProviderClientTest {
 
         assertEquals(
                 CaptchaFailureCode.PROVIDER_TIMEOUT,
-                client.verify("captcha-response", "192.0.2.1", "contacto").failureCode());
+                client.verify("captcha-response", "192.0.2.1", "newsletter").failureCode());
     }
 
     @Test
@@ -37,10 +37,10 @@ class CaptchaProviderClientTest {
         RestOperations transport = mock(RestOperations.class);
         when(transport.exchange(anyString(), eq(HttpMethod.POST), any(), eq(Map.class)))
                 .thenReturn(ResponseEntity.ok(Map.of(
-                        "success", true, "action", "contacto", "hostname", "app.example.com")));
+                        "success", true, "action", "newsletter", "hostname", "app.example.com")));
         CaptchaProviderClient client = client(transport, "app.example.com,admin.example.com");
 
-        assertTrue(client.verify("captcha-response", "192.0.2.1", "contacto").successful());
+        assertTrue(client.verify("captcha-response", "192.0.2.1", "newsletter").successful());
 
         var entityCaptor = forClass(org.springframework.http.HttpEntity.class);
         verify(transport).exchange(
@@ -58,16 +58,16 @@ class CaptchaProviderClientTest {
         CaptchaProviderClient client = client(transport, "app.example.com");
         when(transport.exchange(anyString(), eq(HttpMethod.POST), any(), eq(Map.class)))
                 .thenReturn(ResponseEntity.ok(Map.of(
-                        "success", true, "action", "newsletter", "hostname", "app.example.com")))
+                        "success", true, "action", "login", "hostname", "app.example.com")))
                 .thenReturn(ResponseEntity.ok(Map.of(
-                        "success", true, "action", "contacto", "hostname", "evil.example.com")));
+                        "success", true, "action", "newsletter", "hostname", "evil.example.com")));
 
         assertEquals(
                 CaptchaFailureCode.ACTION_MISMATCH,
-                client.verify("token-1", "192.0.2.1", "contacto").failureCode());
+                client.verify("token-1", "192.0.2.1", "newsletter").failureCode());
         assertEquals(
                 CaptchaFailureCode.HOSTNAME_MISMATCH,
-                client.verify("token-2", "192.0.2.1", "contacto").failureCode());
+                client.verify("token-2", "192.0.2.1", "newsletter").failureCode());
     }
 
     @Test
@@ -83,11 +83,11 @@ class CaptchaProviderClientTest {
                         "success", false, "error-codes", java.util.List.of("internal-error"))));
 
         assertEquals(CaptchaFailureCode.TOKEN_EXPIRED_OR_DUPLICATE,
-                client.verify("expired", "192.0.2.1", "contacto").failureCode());
+                client.verify("expired", "192.0.2.1", "newsletter").failureCode());
         assertEquals(CaptchaFailureCode.CONFIGURATION_ERROR,
-                client.verify("token", "192.0.2.1", "contacto").failureCode());
+                client.verify("token", "192.0.2.1", "newsletter").failureCode());
         assertEquals(CaptchaFailureCode.PROVIDER_UNAVAILABLE,
-                client.verify("token", "192.0.2.1", "contacto").failureCode());
+                client.verify("token", "192.0.2.1", "newsletter").failureCode());
     }
 
     @Test
@@ -97,7 +97,7 @@ class CaptchaProviderClientTest {
                 .thenReturn(ResponseEntity.ok(Map.of("success", true)));
 
         CaptchaVerificationResult result = client(transport, "app.example.com")
-                .verify("token", "192.0.2.1", "contacto");
+                .verify("token", "192.0.2.1", "newsletter");
 
         assertFalse(result.successful());
         assertEquals(CaptchaFailureCode.ACTION_MISMATCH, result.failureCode());

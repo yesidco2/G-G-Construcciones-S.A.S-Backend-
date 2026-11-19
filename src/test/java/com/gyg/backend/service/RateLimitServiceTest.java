@@ -36,7 +36,7 @@ class RateLimitServiceTest {
 
     @Test
     void shouldBlockRequestsAfterLimitAcrossServiceInstances() {
-        String scope = "contacto-" + UUID.randomUUID();
+        String scope = "newsletter-" + UUID.randomUUID();
         MockHttpServletRequest request = requestFrom("192.0.2.1");
 
         assertDoesNotThrow(() -> service.check(scope, request, 1, WINDOW, "Limite excedido"));
@@ -48,7 +48,7 @@ class RateLimitServiceTest {
 
     @Test
     void shouldSeparateClientsAndScopes() {
-        String scope = "contacto-" + UUID.randomUUID();
+        String scope = "newsletter-" + UUID.randomUUID();
         MockHttpServletRequest firstClient = requestFrom("192.0.2.1");
         MockHttpServletRequest secondClient = requestFrom("192.0.2.2");
 
@@ -62,7 +62,7 @@ class RateLimitServiceTest {
 
     @Test
     void shouldIgnoreForwardedForWhenProxyHeadersAreNotTrusted() {
-        String scope = "contacto-" + UUID.randomUUID();
+        String scope = "newsletter-" + UUID.randomUUID();
         MockHttpServletRequest firstRequest = requestFrom("192.0.2.1");
         firstRequest.addHeader("X-Forwarded-For", "198.51.100.1");
         MockHttpServletRequest secondRequest = requestFrom("192.0.2.1");
