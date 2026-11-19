@@ -35,9 +35,10 @@ El backend sirve de API REST para un frontend desarrollado en React.
    - `APP_MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_AUTH`, `SMTP_STARTTLS_ENABLE`, `SMTP_STARTTLS_REQUIRED` y `SMTP_*_TIMEOUT_MS`: remitente y configuración SMTP; STARTTLS y sus timeouts están habilitados por defecto.
    - `APP_RATE_LIMIT_EMAIL_VERIFICATION_PER_HOUR`: máximo de solicitudes de verificación/reenvío por IP y cuenta (3 por defecto).
    - `APP_RATE_LIMIT_PASSWORD_RESET_PER_HOUR`: máximo de solicitudes de restablecimiento por IP por hora (5 por defecto).
+   - `APP_RATE_LIMIT_CONTACTO_PER_HOUR`: máximo de solicitudes de contacto por IP por hora (5 por defecto).
    - `APP_RATE_LIMIT_SEGUIMIENTO_PER_MINUTE`, `APP_RATE_LIMIT_SEGUIMIENTO_ATTEMPTS_PER_15_MIN` y `APP_RATE_LIMIT_SEGUIMIENTO_FAILED_PER_15_MIN`: límites de seguimiento público por IP. Los contadores se comparten entre instancias mediante PostgreSQL.
-   - `APP_MAX_REQUEST_BODY_SIZE`: máximo para cuerpos HTTP no multipart (`1MB` por defecto).
-   - `APP_MULTIPART_MAX_FILE_SIZE` y `APP_MULTIPART_MAX_REQUEST_SIZE`: límites de subida multipart (`5MB` por archivo y `25MB` por petición, por defecto).
+   - `APP_MAX_REQUEST_BODY_SIZE`: tamaño máximo de los cuerpos HTTP (`1MB` por defecto).
+   - `APP_RATE_LIMIT_NEWSLETTER_PER_HOUR`: máximo de suscripciones al newsletter por IP por hora (5 por defecto).
    - `APP_PRIVACY_POLICY_VERSION`, `APP_CHAT_LOG_RETENTION_MONTHS` y `APP_CHAT_LOG_RETENTION_CRON`: versión de consentimiento y política de retención de consultas del chat.
    - `SPRING_PROFILES_ACTIVE=dev` solo para desarrollo local; añade orígenes localhost y carga datos demostrativos.
 
@@ -58,7 +59,7 @@ Desde PowerShell, ejecuta el script de desarrollo en la raíz del proyecto:
 .\run-dev.ps1
 ```
 
-Antes de usarlo, revisa `run-dev.ps1` y ajusta `FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`, `APP_ADMIN_EMAILS`, `DB_URL` y `DB_USER` a tu entorno. El script comprueba que exista el archivo de credenciales de Firebase y solicita la contraseña de PostgreSQL al ejecutarse; no la guarda en el archivo. Si falta `APP_CAPTCHA_SECRET`, usa una clave de prueba de Turnstile únicamente en perfil `dev`; el frontend local debe usar la sitekey de prueba correspondiente. No copies esas claves al entorno productivo. Configura SMTP en el entorno si necesitas probar el envío real. La base de datos indicada en `DB_URL` debe existir.
+Configura `FIREBASE_PROJECT_ID`, `FIREBASE_CREDENTIALS_PATH`, `APP_ADMIN_EMAILS`, `DB_URL` y `DB_USER` para tu entorno. Para PostgreSQL, el script usa `DB_PASSWORD` del entorno o de `.env`. Si falta, la solicita de forma interactiva. Flyway administra las migraciones y Hibernate valida el esquema durante el arranque. Si falta `APP_CAPTCHA_SECRET`, el perfil `dev` usa una clave de prueba de Turnstile y el frontend local necesita la sitekey de prueba correspondiente. Configura SMTP en el entorno si necesitas probar el envío real. La base de datos indicada en `DB_URL` debe existir.
 Activa el perfil `dev` en la terminal antes de iniciarlo para habilitar los datos de demostración y los orígenes localhost:
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "dev"
@@ -105,8 +106,7 @@ En el perfil `dev`, CORS permite `http://localhost:5173` (puerto por defecto de 
 | **GET** | `/api/institucional` | Devuelve la misión, visión y valores de la empresa. |
 | **GET** | `/api/datos-legales` | Devuelve el NIT y la dirección física de la empresa. |
 | **POST** | `/api/obras/seguimiento` | Recibe `{ "codigo": "..." }` y retorna únicamente datos de seguimiento permitidos. |
-| **POST** | `/api/obras/seguimiento/fotos/{fotoId}` | Retorna una foto privada como `image/png`; requiere `{ "codigo": "..." }` en el cuerpo y límites por IP. |
-| **POST** | `/api/contacto` | Recibe `{ nombre, empresa, correo, telefono, tipoServicio, mensaje, aceptaPolitica, politicaVersion, sitioWeb }`. Requiere nombre, mensaje, consentimiento y al menos correo o teléfono; empresa, correo, teléfono y versión de política aceptan cadena vacía como ausente. El honeypot `sitioWeb` debe enviarse vacío. Cuando CAPTCHA está activo, requiere `X-Captcha-Token`. |
+| **POST** | `/api/contacto` | Registra una solicitud en `solicitudes_contacto`; requiere consentimiento y CAPTCHA cuando está activo. |
 | **POST** | `/api/newsletter` | Registra una suscripción con `{ correo, aceptaPolitica }`; usa `X-Captcha-Token` cuando CAPTCHA está activo. |
 | **POST** | `/api/auth/password-reset` | Solicita un enlace oficial de Firebase y lo envía por SMTP; público, limitado por IP y sin requisito CAPTCHA. Responde de forma genérica para no revelar si el correo está autorizado o registrado. |
 | **POST** | `/api/auth/email-verification` | Requiere Firebase ID token, pero no sesión CAPTCHA verificada ni body. El destinatario se resuelve desde Firebase; envía un enlace oficial si la cuenta está activa y aún no verificada. |
@@ -115,12 +115,12 @@ En el perfil `dev`, CORS permite `http://localhost:5173` (puerto por defecto de 
 
 ### Contrato del panel de obras
 
-Todos los endpoints `/api/panel/**` requieren Firebase Authentication, sesión verificada y rol `ADMIN` o `INGENIERO`; las operaciones de clientes y rotación de códigos son exclusivas de `ADMIN`. El servidor comprueba además la asignación del ingeniero a cada obra.
+Todos los endpoints `/api/panel/**` requieren Firebase Authentication, sesión verificada y rol `ADMIN` o `INGENIERO`. El listado de cuentas de clientes y su vinculación a una obra requieren permisos de administrador. El servidor comprueba la asignación del ingeniero a cada obra para editarla o renovar su código.
 
 | Método | Endpoint | Acceso y respuesta |
 |---|---|---|
 | `GET` | `/api/panel/obras` | ADMIN: todas las obras activas; INGENIERO: solo las asignadas. |
-| `GET` | `/api/panel/obras/{id}` | Obra y fotos; comprueba el rol y la asignación. |
+| `GET` | `/api/panel/obras/{id}` | Obra y hitos; comprueba el rol y la asignación. |
 | `GET` | `/api/panel/obras/clientes` | Solo ADMIN; devuelve usuarios activos con rol `CLIENTE` (`id`, `nombre`, `email`). |
 | `GET` | `/api/panel/obras/estados` | Estados válidos: `PLANIFICADA`, `EN_PROGRESO`, `PAUSADA`, `FINALIZADA`. |
 | `POST` | `/api/panel/obras` | Solo ADMIN; crea y devuelve `201 Created`. |
@@ -130,16 +130,13 @@ Todos los endpoints `/api/panel/**` requieren Firebase Authentication, sesión v
 | `PATCH` | `/api/panel/obras/{id}/progreso` | Recibe `{ "progreso": 0..100 }`. |
 | `DELETE` | `/api/panel/obras/{id}` | Eliminación lógica; responde `204 No Content`. |
 | `POST` | `/api/panel/obras/{id}/codigo-seguimiento` | Solo ADMIN; rota el código y lo devuelve una única vez. |
-| `POST` | `/api/panel/obras/{id}/fotos` | Multipart: `archivo` y `descripcion` opcional. Responde la obra actualizada y su lista de fotos. |
-| `GET` | `/api/panel/obras/{id}/fotos/{fotoId}` | Descarga inline; requiere bearer token y permiso sobre la obra. |
-| `DELETE` | `/api/panel/obras/{id}/fotos/{fotoId}` | Elimina la foto; responde `204 No Content`. |
 
-El cuerpo de creación y reemplazo requiere `nombre`, `clienteId`, `categoria`, `estado` y `progreso`; `hitos` es opcional. `descripcion` (máximo 2000 caracteres), `fechaInicio` y `fechaFinEstimada` son opcionales, con fechas ISO `yyyy-MM-dd`; cuando ambas existen, la fecha fin no puede ser anterior a la de inicio. `categoria` admite `CIVIL` o `SST`. Ejemplo:
+La creación requiere `nombre`, `cliente`, `categoria`, `estado` y `progreso`. `hitos`, `descripcion` (máximo 2000 caracteres), `fechaInicio` y `fechaFinEstimada` son opcionales. Usa fechas ISO `yyyy-MM-dd` y una fecha final igual o posterior a la inicial. `categoria` admite `CIVIL` o `SST`. Ejemplo:
 
 ```json
 {
   "nombre": "Reforzamiento estructural",
-  "clienteId": 42,
+  "cliente": "Empresa del cliente",
   "categoria": "CIVIL",
   "estado": "PLANIFICADA",
   "progreso": 0,
@@ -150,31 +147,35 @@ El cuerpo de creación y reemplazo requiere `nombre`, `clienteId`, `categoria`, 
 }
 ```
 
-`clienteId` debe identificar un usuario activo con rol `CLIENTE`; el texto `cliente` que algunos formularios antiguos envían no se usa para asignar el cliente. ADMIN asigna el cliente al crear o puede cambiarlo; INGENIERO no puede crear ni cambiar la asignación. Un administrador habilita una cuenta existente como cliente desde `PATCH /api/admin/usuarios/{id}` con `{ "rol": "CLIENTE" }`. Ningún DTO acepta que el cliente establezca `id`, roles, hash, borrado lógico o código de seguimiento.
+Un ADMIN o INGENIERO registra una obra con el nombre del cliente. Cuando la registra un INGENIERO, queda asignado automáticamente. ADMIN también puede enviar `clienteId` para vincular una cuenta activa con rol `CLIENTE` y cambiar esa vinculación desde el panel. El nombre de un cliente sin cuenta queda guardado en `apoyo.obras_ingenieros.cliente`.
 
-Las transiciones permitidas son `PLANIFICADA → EN_PROGRESO|PAUSADA`, `EN_PROGRESO → PAUSADA|FINALIZADA` y `PAUSADA → EN_PROGRESO|FINALIZADA`; `FINALIZADA` es terminal. La respuesta de obra incluye `id`, `nombre`, `cliente`, `clienteId`, `categoria`, `estado`, `progreso`, `descripcion`, fechas, `hitos` y `fotos`. Cada foto contiene `id`, `url`, `fecha`, `descripcion` y, solo en el panel autorizado, `subidoPor`.
+Las transiciones permitidas son `PLANIFICADA → EN_PROGRESO|PAUSADA`, `EN_PROGRESO → PAUSADA|FINALIZADA` y `PAUSADA → EN_PROGRESO|FINALIZADA`; `FINALIZADA` es terminal. La respuesta de obra incluye `id`, `nombre`, `cliente`, `clienteId`, `categoria`, `estado`, `progreso`, `descripcion`, fechas y `hitos`.
 
-El frontend debe dejar de enviar `codigo` y seleccionar el cliente mediante `clienteId` obtenido de `/api/panel/obras/clientes`. Puede conservar `cliente` como etiqueta solo de lectura, pero el servidor lo ignora en escritura. Para editar sin perder campos no incluidos en el formulario debe usar `PATCH`; fechas y fechas límite se envían como cadenas `yyyy-MM-dd`. Las transiciones inválidas responden `409 Conflict` y los datos inválidos `400 Bad Request`.
+El frontend envía `cliente` como texto al registrar una obra sin cuenta. Para editar campos de forma parcial usa `PATCH` y envía las fechas como cadenas `yyyy-MM-dd`. Las transiciones inválidas responden `409 Conflict` y los datos inválidos `400 Bad Request`.
 
-Para mostrar fotos del panel, el frontend debe descargar el endpoint protegido con `Authorization: Bearer <Firebase ID token>` y asignar la respuesta `Blob` a la vista; no debe usar una etiqueta `<img>` sin token. Para una consulta pública, `url` apunta a `/api/obras/seguimiento/fotos/{fotoId}`: el frontend debe hacer `POST` con `{ "codigo": "<código de seguimiento>" }` y mostrar la imagen Blob. El código no se incluye en la URL.
+Un administrador o un ingeniero asignado puede editar el nombre visible del cliente con `PATCH /api/panel/obras/{id}` y el campo `cliente`. Para cambiar la cuenta vinculada se usa `clienteId` con permisos de administrador.
+
+El código de seguimiento de una obra activa no caduca. El administrador o un ingeniero asignado puede reemplazarlo mediante `POST /api/panel/obras/{id}/codigo-seguimiento`. El código anterior se invalida al guardar el nuevo. El panel autorizado recupera el código vigente al recargar. Mantén el mismo `APP_TRACKING_CODE_PEPPER` entre reinicios y despliegues para recuperar y validar los códigos existentes.
+
+El endpoint `/api/contacto` guarda las solicitudes en `solicitudes_contacto`. El contrato de fotografías está documentado más abajo.
 
 ### Códigos de seguimiento y transición de datos existentes
 
-Los códigos nuevos tienen 32 caracteres aleatorios generados por `SecureRandom`; PostgreSQL almacena solo HMAC-SHA256 con `APP_TRACKING_CODE_PEPPER`. `codigoSeguimiento` aparece únicamente en la respuesta de creación o rotación y debe tratarse como secreto de un solo acceso. Nunca se aceptan códigos enviados al crear obras ni se retornan hashes.
+Los códigos nuevos tienen 32 caracteres aleatorios generados por `SecureRandom`. PostgreSQL guarda el HMAC-SHA256 para validar el seguimiento y una copia cifrada para mostrar el código en el panel autorizado. V17 agrega la columna de cifrado. Si un código anterior solo tenía HMAC, una consulta pública exitosa con ese código guarda su copia cifrada y el panel puede mostrarlo sin regenerarlo. La respuesta pública omite el código.
 
-La migración `V6` marca como legacy las obras que ya existían, sin recuperar ni revelar sus códigos originales. Mientras `APP_TRACKING_CODE_LEGACY_ENABLED=true`, esas obras solo se consultan comparando el código presentado contra su HMAC; las consultas tienen límites persistidos por IP y los errores no distinguen obras inexistentes. Para retirar el formato antiguo: entrega primero un código nuevo rotando cada obra existente mediante el endpoint ADMIN de rotación; comunica el código por un canal seguro; después configura `APP_TRACKING_CODE_LEGACY_ENABLED=false` y reinicia. Los códigos anteriores dejarán de funcionar; sus HMAC no necesitan ni deben revertirse. Las obras nuevas y las obras rotadas siempre usan el formato seguro de 32 caracteres.
+La migración `V6` marcó como legacy las obras que existían en ese momento. Mientras `APP_TRACKING_CODE_LEGACY_ENABLED=true`, el backend acepta el formato anterior únicamente en las obras marcadas como legacy. Para retirar el formato antiguo, renueva los códigos de esas obras y entrega el reemplazo por un canal privado antes de configurar `APP_TRACKING_CODE_LEGACY_ENABLED=false`. Las consultas tienen límites persistidos por IP.
 
 ### Consentimiento y retención de datos
 
 Las solicitudes de contacto y las suscripciones al newsletter deben incluir `aceptaPolitica: true`. La versión vigente se configura con `APP_PRIVACY_POLICY_VERSION` y se guarda junto con la fecha del consentimiento. La verificación CAPTCHA de contacto y newsletter se controla con `APP_CAPTCHA_ENABLED`, `APP_CAPTCHA_PROVIDER` y `APP_CAPTCHA_SECRET`; si está habilitada, el token del proveedor se envía en el encabezado `X-Captcha-Token`.
 
-El campo `tipoServicio` de contacto admite los valores del selector del frontend: `Obra Civil`, `Consultoría SST`, `Interventoría Técnica` y `Capacitación Integral`.
+El campo `tipoServicio` de contacto admite `Obra Civil`, `Consultoría SST`, `Interventoría Técnica` y `Capacitación Integral`.
 
 Los registros del chat se eliminan automáticamente según `APP_CHAT_LOG_RETENTION_MONTHS` (12 meses por defecto), en el horario definido por `APP_CHAT_LOG_RETENTION_CRON`.
 
 ### Datos de desarrollo
 
-En el perfil `dev`, `DataLoader` solo precarga obras cuando ya existe un usuario activo con rol `CLIENTE`; genera códigos aleatorios y guarda únicamente su HMAC. No hay códigos de demostración fijos. Las obras nuevas creadas desde el panel devuelven el código una vez. Al migrar códigos almacenados en texto plano, Flyway requiere `APP_TRACKING_CODE_PEPPER` y los sustituye por HMAC; nunca intentes reconstruir el valor original desde el hash.
+En el perfil `dev`, `DataLoader` precarga obras cuando ya existe un usuario activo con rol `CLIENTE` y genera códigos aleatorios con el mismo almacenamiento que el panel.
 
 ### CAPTCHA, sesiones y correo Firebase
 
@@ -200,3 +201,29 @@ Para ejecutar los tests, corre:
 ```powershell
 .\mvnw.cmd test
 ```
+
+### Cuentas y autorizaciones unificadas
+
+La migracion V12 concentra cuentas y autorizaciones en `administradores_autorizados`. Conserva los IDs de usuarios y las referencias de `obras_ingenieros`. El ID anterior de cada autorizacion se guarda en `autorizacion_id_anterior`.
+
+`rol` y `activo` corresponden a la cuenta. `autorizacion_email`, `rol_autorizado`, `autorizacion_activa`, `autorizado_por` y `autorizado_en` conservan la autorizacion administrativa por correo. Una autorizacion pendiente tiene `firebase_uid` nulo y se vincula al primer token con ese correo verificado. Revocar la autorizacion conserva la cuenta.
+
+Los endpoints `/api/admin/usuarios` y `/api/admin/autorizados` mantienen sus rutas y campos de respuesta. Tras migrar, el frontend debe recargar la lista de autorizaciones y usar el `id` devuelto por GET para DELETE `/api/admin/autorizados/{id}`, ya que ahora corresponde al ID de la cuenta unificada. Las autorizaciones pendientes aparecen en la lista de autorizados. La lista de usuarios muestra cuentas vinculadas a Firebase.
+
+V12 comprueba duplicados de correo antes de modificar el esquema, copia y verifica las autorizaciones, elimina su tabla original y renombra `usuarios` a `administradores_autorizados`. PostgreSQL ejecuta la migracion dentro de una transaccion. El backend desplegado debe incluir el nuevo mapeo JPA al aplicar V12.
+
+### Esquema tecnico de PostgreSQL
+
+Las tablas `api_rate_limit_locks`, `api_rate_limit_windows`, `captcha_session_tickets`, `captcha_used_tokens` y `verified_auth_sessions` se almacenan en `seguridad` desde V13. El historial `flyway_schema_history` se traslada antes de ejecutar Flyway, conservando sus registros. La configuracion detecta historiales duplicados y detiene el arranque para evitar elegir uno arbitrariamente.
+
+Las conexiones de la aplicacion utilizan `search_path = public, seguridad`. Flyway usa una conexion independiente con su historial en `seguridad` y ejecuta las migraciones en `public`, manteniendo compatibles las migraciones anteriores. El perfil de pruebas H2 conserva sus tablas tecnicas en `PUBLIC`. La separacion de esquemas PostgreSQL se verifico tambien contra la base real, incluyendo una segunda ejecucion sin migraciones pendientes.
+
+V14 trasladó hitos, asignaciones, suscripciones y auditoría al esquema `apoyo`. V15 concentra las obras, los hitos, las asignaciones y las fotos en `apoyo.obras_ingenieros`. V15 descarta las obras anteriores por instrucción del propietario.
+
+### Registro y fotografías de obra
+
+React registra la obra con `POST /api/panel/obras`. El JSON usa `nombre`, `cliente`, `categoria`, `estado`, `progreso` y `descripcion`. El registro devuelve `id` y `codigoSeguimiento`. El panel autorizado puede volver a consultar el código vigente.
+
+- Envía cada foto con `POST /api/panel/obras/{id}/fotos` mediante `multipart/form-data`. Usa el campo `archivo` y, opcionalmente, `descripcion`. Se admiten JPEG, PNG y WebP, hasta 5 MB y 4 megapíxeles. Cada obra admite hasta 20 fotos y el servidor las guarda como PNG.
+- Lista las fotos del panel con `GET /api/panel/obras/{id}/fotos` o lee `fotos` en la respuesta de la obra. Cada elemento incluye `id`, `nombre`, `url`, `fecha` y `descripcion`. Descarga con `GET /api/panel/obras/{id}/fotos/{fotoId}` y elimina con `DELETE` en esa misma ruta.
+- El seguimiento público descarga con `POST /api/obras/seguimiento/fotos/{fotoId}`, mandando `{"codigo":"..."}` en JSON. Usa la respuesta PNG como Blob para mostrarla en la interfaz.
