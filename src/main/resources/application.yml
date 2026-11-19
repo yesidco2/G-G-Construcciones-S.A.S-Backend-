@@ -1,9 +1,15 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   application:
     name: GYG_Backend
   profiles:
     default: prod
   datasource:
+    hikari:
+      connection-init-sql: SET search_path TO public, seguridad
     url: ${DB_URL}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
@@ -28,10 +34,6 @@ spring:
     enabled: true
     baseline-on-migrate: true
     baseline-version: 1
-  servlet:
-    multipart:
-      max-file-size: ${APP_MULTIPART_MAX_FILE_SIZE:5MB}
-      max-request-size: ${APP_MULTIPART_MAX_REQUEST_SIZE:25MB}
   jackson:
     deserialization:
       fail-on-unknown-properties: true
@@ -67,6 +69,7 @@ app:
     public: ${APP_SWAGGER_PUBLIC:false}
   rate-limit:
     contacto-per-hour: ${APP_RATE_LIMIT_CONTACTO_PER_HOUR:5}
+    newsletter-per-hour: ${APP_RATE_LIMIT_NEWSLETTER_PER_HOUR:5}
     chat-per-minute: ${APP_RATE_LIMIT_CHAT_PER_MINUTE:20}
     seguimiento-per-minute: ${APP_RATE_LIMIT_SEGUIMIENTO_PER_MINUTE:10}
     seguimiento-attempts-per-15-min: ${APP_RATE_LIMIT_SEGUIMIENTO_ATTEMPTS_PER_15_MIN:20}

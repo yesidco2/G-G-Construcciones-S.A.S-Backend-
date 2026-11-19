@@ -12,10 +12,7 @@ public class SeguimientoObraDTO {
     }
 
     public SeguimientoObraDTO(
-            String nombre,
-            Integer porcentajeAvance,
-            List<SeguimientoHitoDTO> hitos,
-            List<FotoObraDTO> fotos) {
+            String nombre, Integer porcentajeAvance, List<SeguimientoHitoDTO> hitos, List<FotoObraDTO> fotos) {
         this.nombre = nombre;
         this.porcentajeAvance = porcentajeAvance;
         this.hitos = hitos;
@@ -42,15 +39,11 @@ public class SeguimientoObraDTO {
         return hitos;
     }
 
-    public void setHitos(List<SeguimientoHitoDTO> hitos) {
-        this.hitos = hitos;
-    }
-
     public List<FotoObraDTO> getFotos() {
         return fotos;
     }
 
-    public void setFotos(List<FotoObraDTO> fotos) {
-        this.fotos = fotos;
+    public void setHitos(List<SeguimientoHitoDTO> hitos) {
+        this.hitos = hitos;
     }
 }

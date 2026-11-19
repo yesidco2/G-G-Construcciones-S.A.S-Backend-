@@ -19,7 +19,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -35,10 +34,7 @@ public class GygService {
     private ObraRepository obraRepository;
 
     @Autowired
-    private FotoObraRepository fotoObraRepository;
-
-    @Autowired
-    private ObraPhotoStorageService photoStorage;
+    private FotosObraService fotosObraService;
 
     @Autowired
     private SolicitudContactoRepository solicitudContactoRepository;
@@ -53,7 +49,7 @@ public class GygService {
     private TrackingCodeService trackingCodeService;
 
     @Autowired
-    private ContactCooldownLockService contactCooldownLockService;
+    private EmailSubmissionLockService emailSubmissionLockService;
 
     @Value("${app.privacy.policy-version:2026-01}")
     private String policyVersion;
@@ -78,7 +74,6 @@ public class GygService {
         );
     }
 
-    // 4. POST /api/contacto
     @Transactional
     public void crearContacto(ContactoRequest request) {
         if (request == null) {
@@ -110,14 +105,14 @@ public class GygService {
         LocalDateTime now = LocalDateTime.now();
         String normalizedEmail = correo == null ? null : correo.toLowerCase(Locale.ROOT);
         if (normalizedEmail != null) {
-            contactCooldownLockService.lockByEmail(normalizedEmail);
+            emailSubmissionLockService.lockByEmail(normalizedEmail);
             LocalDateTime lastContact = solicitudContactoRepository
-                .findTopByCorreoOrderByFechaDesc(normalizedEmail)
-                .map(SolicitudContacto::getFecha)
-                .orElse(null);
+                    .findTopByCorreoOrderByFechaDesc(normalizedEmail)
+                    .map(SolicitudContacto::getFecha)
+                    .orElse(null);
             if (lastContact != null && lastContact.plusMinutes(CONTACT_COOLDOWN_MINUTES).isAfter(now)) {
-            throw new TooManyRequestsException(
-                "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos.");
+                throw new TooManyRequestsException(
+                        "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos.");
             }
         }
 
@@ -138,7 +133,6 @@ public class GygService {
         solicitud.setAceptaPolitica(true);
         solicitud.setVersionPolitica(policyVersion);
         solicitud.setFechaConsentimiento(now);
-
         solicitudContactoRepository.save(solicitud);
     }
 
@@ -164,40 +158,37 @@ public class GygService {
     }
 
     // 7. POST /api/obras/seguimiento
+    @Transactional
     public SeguimientoObraDTO getSeguimientoProyecto(String codigo) {
         Obra obra = findTrackedWork(codigo);
+        if (obra.getCodigoCifrado() == null) {
+            obraRepository.storeRecoveredTrackingCode(obra.getId(), obra.getCodigoHash(),
+                    trackingCodeService.encrypt(codigo, obra.getCodigoHash()));
+        }
 
-        List<FotoObraDTO> fotosObra = obra.getFotos().stream()
-                .map(f -> new FotoObraDTO(
-                        f.getId(),
-                        f.getStorageKey() == null
-                                ? f.getUrl()
-                                : "/api/obras/seguimiento/fotos/" + f.getId(),
-                        f.getFecha(),
-                        f.getDescripcion()))
-                .collect(Collectors.toList());
         List<SeguimientoHitoDTO> hitos = obra.getHitos().stream()
                 .map(hito -> new SeguimientoHitoDTO(
-                        hito.getNombre(), hito.getDescripcion(),
-                        hito.getFechaObjetivo(), hito.isCompletado()))
+                          hito.nombre(), hito.descripcion(),
+                          hito.fechaObjetivo(), hito.completado()))
                 .toList();
 
         return new SeguimientoObraDTO(
-                obra.getNombreObra(), obra.getPorcentajeAvance(), hitos, fotosObra);
+                  obra.getNombreObra(), obra.getPorcentajeAvance(), hitos,
+                  obra.getFotos().stream().map(foto -> new FotoObraDTO(
+                          foto.id(), foto.nombre(), "/api/obras/seguimiento/fotos/" + foto.id(),
+                          foto.fecha(), foto.descripcion())).toList());
     }
 
-    public StoredImage getSeguimientoFoto(String codigo, Long fotoId) throws java.io.IOException {
+    public byte[] getSeguimientoFoto(String codigo, Long fotoId) {
         Obra obra = findTrackedWork(codigo);
-        FotoObra foto = fotoObraRepository.findByIdAndObra_CodigoHashAndStorageKeyIsNotNull(
-                        fotoId, obra.getCodigoHash())
-                .orElseThrow(() -> new ResourceNotFoundException("No se encontró el proyecto solicitado."));
-        return new StoredImage(photoStorage.read(foto.getStorageKey()), "image/png");
+        obra.buscarFoto(fotoId);
+        return fotosObraService.obtener(obra.getId(), fotoId);
     }
 
     private Obra findTrackedWork(String codigo) {
         String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
         String codeHash = trackingCodeService.hash(candidate);
-        Optional<Obra> found = obraRepository.findByCodigoHashWithFotosAndHitos(codeHash);
+        Optional<Obra> found = obraRepository.findByCodigoHashWithHitos(codeHash);
         boolean codeMatches = trackingCodeService.matches(
                 candidate, found.map(Obra::getCodigoHash).orElse(DUMMY_TRACKING_HASH));
         boolean legacyCode = found.map(Obra::isCodigoLegacy).orElse(false);
@@ -241,9 +232,6 @@ public class GygService {
             count++;
         }
         return count;
-    }
-
-    public record StoredImage(byte[] content, String contentType) {
     }
 
 }

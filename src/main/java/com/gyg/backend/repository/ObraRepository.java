@@ -3,6 +3,7 @@ package com.gyg.backend.repository;
 import com.gyg.backend.model.Obra;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Lock;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
@@ -14,9 +15,16 @@ import java.util.List;
 @Repository
 public interface ObraRepository extends JpaRepository<Obra, Long> {
 
-    @Query("SELECT DISTINCT o FROM Obra o LEFT JOIN FETCH o.fotos "
-            + "WHERE o.codigoHash = :codigoHash AND o.eliminadaEn IS NULL")
-    Optional<Obra> findByCodigoHashWithFotosAndHitos(@Param("codigoHash") String codigoHash);
+    @Query("SELECT o FROM Obra o WHERE o.codigoHash = :codigoHash AND o.eliminadaEn IS NULL")
+    Optional<Obra> findByCodigoHashWithHitos(@Param("codigoHash") String codigoHash);
+
+    @Modifying
+    @Query("""
+            UPDATE Obra o SET o.codigoCifrado = :encrypted
+            WHERE o.id = :id AND o.codigoHash = :hash AND o.codigoCifrado IS NULL AND o.eliminadaEn IS NULL
+            """)
+    int storeRecoveredTrackingCode(@Param("id") Long id, @Param("hash") String hash,
+            @Param("encrypted") String encrypted);
 
     List<Obra> findAllByEliminadaEnIsNullOrderByIdDesc();
 

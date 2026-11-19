@@ -94,8 +94,6 @@ public class SecurityConfig {
                             .requestMatchers("/api/auth/**").authenticated()
                             .requestMatchers(HttpMethod.POST, "/api/obras/seguimiento/**").permitAll()
                     .requestMatchers("/api/panel/obras/clientes").hasRole("ADMIN")
-                            .requestMatchers(HttpMethod.POST, "/api/panel/obras/*/codigo-seguimiento")
-                                    .hasRole("ADMIN")
                     .requestMatchers("/api/panel/**").hasAnyRole("ADMIN", "INGENIERO")
                     .requestMatchers("/api/admin/consultas-chat").hasRole("ADMIN")
                     .requestMatchers("/api/admin/autorizados/**", "/api/admin/usuarios/**")

@@ -5,6 +5,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.gyg.backend.model.Rol;
 import com.gyg.backend.repository.AdministradorAutorizadoRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import org.springframework.test.context.ActiveProfiles;
 import org.flywaydb.core.Flyway;
@@ -21,6 +22,9 @@ class DemoApplicationTests {
 
 	@Autowired
 	private Flyway flyway;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
 
 	@Test
 	void contextLoads() {
@@ -40,6 +44,16 @@ class DemoApplicationTests {
 		assertTrue(java.util.Arrays.stream(flyway.info().applied())
 				.anyMatch(migration -> migration.getVersion() != null
 						&& "1".equals(migration.getVersion().getVersion())));
+	}
+
+	@Test
+	void keepsContactRequestsAndRemovesWorkPhotoTables() {
+		assertEquals(1, jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM information_schema.tables WHERE LOWER(table_name) = 'solicitudes_contacto'",
+				Integer.class));
+		assertEquals(0, jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM information_schema.tables WHERE LOWER(table_name) IN ('foto_obra', 'foto_obras')",
+				Integer.class));
 	}
 
 }

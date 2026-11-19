@@ -14,12 +14,12 @@ import java.util.Locale;
 public class NewsletterService {
 
     private final NewsletterRepository repository;
-    private final ContactCooldownLockService lockService;
+    private final EmailSubmissionLockService lockService;
     private final String policyVersion;
 
     public NewsletterService(
             NewsletterRepository repository,
-            ContactCooldownLockService lockService,
+            EmailSubmissionLockService lockService,
             @Value("${app.privacy.policy-version:2026-01}") String policyVersion) {
         this.repository = repository;
         this.lockService = lockService;

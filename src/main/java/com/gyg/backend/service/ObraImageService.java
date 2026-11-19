@@ -1,6 +1,5 @@
 package com.gyg.backend.service;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -12,27 +11,25 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 
 @Service
-public class ObraPhotoStorageService {
+public class ObraImageService {
 
     private static final long MAX_FILE_BYTES = 5L * 1024 * 1024;
-    private static final long MAX_IMAGE_PIXELS = 16_000_000L;
+    private static final long MAX_IMAGE_PIXELS = 4_000_000L;
 
-    private final Path storageDirectory;
-
-    public ObraPhotoStorageService(
-            @Value("${app.uploads.path:${APP_UPLOADS_DIR:./var/uploads/obra-fotos}}") String path) {
-        this.storageDirectory = Path.of(path).toAbsolutePath().normalize();
+    public byte[] sanitize(MultipartFile file) {
+        try {
+            return encodePng(file);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("No se pudo leer o procesar la imagen.", exception);
+        }
     }
 
-    public StoredPhoto store(MultipartFile file) throws IOException {
+    private byte[] encodePng(MultipartFile file) throws IOException {
         if (file == null || file.isEmpty() || file.getSize() > MAX_FILE_BYTES) {
             throw new IllegalArgumentException("La imagen debe tener contenido y no superar 5 MB.");
         }
@@ -71,19 +68,10 @@ public class ObraPhotoStorageService {
         }
         cleanImage.flush();
 
-        String key = UUID.randomUUID() + ".png";
-        Files.createDirectories(storageDirectory);
-        Path destination = resolveKey(key);
-        Files.write(destination, output.toByteArray());
-        return new StoredPhoto(key, "image/png");
-    }
-
-    public byte[] read(String key) throws IOException {
-        return Files.readAllBytes(resolveKey(key));
-    }
-
-    public void delete(String key) throws IOException {
-        Files.deleteIfExists(resolveKey(key));
+        if (output.size() > MAX_FILE_BYTES) {
+            throw new IllegalArgumentException("La imagen procesada supera 5 MB.");
+        }
+        return output.toByteArray();
     }
 
     private BufferedImage decodeImage(byte[] bytes) throws IOException {
@@ -132,17 +120,4 @@ public class ObraPhotoStorageService {
         throw new IllegalArgumentException("Solo se permiten imágenes JPEG, PNG o WebP.");
     }
 
-    private Path resolveKey(String key) {
-        if (key == null || !key.matches("[0-9a-fA-F-]{36}\\.png")) {
-            throw new IllegalArgumentException("La referencia de imagen no es válida.");
-        }
-        Path resolved = storageDirectory.resolve(key).normalize();
-        if (!resolved.startsWith(storageDirectory)) {
-            throw new IllegalArgumentException("La referencia de imagen no es válida.");
-        }
-        return resolved;
-    }
-
-    public record StoredPhoto(String key, String contentType) {
-    }
 }

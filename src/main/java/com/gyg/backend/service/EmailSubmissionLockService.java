@@ -9,14 +9,14 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.concurrent.locks.ReentrantLock;
 
 @Service
-public class ContactCooldownLockService {
+public class EmailSubmissionLockService {
 
     private static final ReentrantLock NON_POSTGRES_LOCK = new ReentrantLock();
 
     private final EntityManager entityManager;
     private final boolean postgres;
 
-    public ContactCooldownLockService(
+    public EmailSubmissionLockService(
             EntityManager entityManager,
             @Value("${spring.datasource.url:}") String datasourceUrl) {
         this.entityManager = entityManager;

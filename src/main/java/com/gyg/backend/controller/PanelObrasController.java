@@ -12,18 +12,12 @@ import com.gyg.backend.service.PanelObrasService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -127,16 +121,6 @@ public class PanelObrasController {
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/{obraId}/fotos/{fotoId}")
-    public ResponseEntity<Void> eliminarFoto(
-            @PathVariable @Positive Long obraId,
-            @PathVariable @Positive Long fotoId,
-            @AuthenticationPrincipal Usuario actor,
-            HttpServletRequest httpRequest) throws IOException {
-        panelObrasService.eliminarFoto(obraId, fotoId, actor, httpRequest.getRemoteAddr());
-        return ResponseEntity.noContent().build();
-    }
-
     @PutMapping("/{obraId}/ingenieros/{usuarioId}")
     public ResponseEntity<ObraResponse> asignarIngeniero(
             @PathVariable @Positive Long obraId,
@@ -147,30 +131,4 @@ public class PanelObrasController {
                 panelObrasService.asignarIngeniero(obraId, usuarioId, actor, httpRequest.getRemoteAddr()));
     }
 
-    @PostMapping(path = "/{obraId}/fotos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ObraResponse> subirFoto(
-            @PathVariable @Positive Long obraId,
-            @RequestPart("archivo") MultipartFile archivo,
-            @RequestPart(value = "descripcion", required = false) String descripcion,
-            @AuthenticationPrincipal Usuario actor,
-            HttpServletRequest httpRequest) throws IOException {
-        return ResponseEntity.ok(
-                panelObrasService.subirFoto(obraId, archivo, descripcion, actor, httpRequest.getRemoteAddr()));
-    }
-
-    @GetMapping("/{obraId}/fotos/{fotoId}")
-    public ResponseEntity<byte[]> obtenerFoto(
-            @PathVariable @Positive Long obraId,
-            @PathVariable @Positive Long fotoId,
-            @AuthenticationPrincipal Usuario actor) throws IOException {
-        PanelObrasService.StoredImage image = panelObrasService.obtenerFoto(obraId, fotoId, actor);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType(image.contentType()));
-        headers.setContentDisposition(ContentDisposition.inline()
-                .filename("foto-obra.png", StandardCharsets.UTF_8)
-                .build());
-        headers.set("X-Content-Type-Options", "nosniff");
-        headers.setCacheControl("no-store");
-        return new ResponseEntity<>(image.content(), headers, HttpStatus.OK);
-    }
 }

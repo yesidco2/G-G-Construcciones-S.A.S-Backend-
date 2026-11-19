@@ -1,6 +1,7 @@
 package com.gyg.backend.dto.panel;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.gyg.backend.dto.FotoObraDTO;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -18,6 +19,11 @@ public record ObraResponse(
         LocalDate fechaInicio,
         LocalDate fechaFinEstimada,
         List<HitoObraResponse> hitos,
-        List<FotoObraResponse> fotos,
+        List<FotoObraDTO> fotos,
         String codigoSeguimiento) {
+
+    @Override
+    public String toString() {
+        return "ObraResponse[id=" + id + "]";
+    }
 }

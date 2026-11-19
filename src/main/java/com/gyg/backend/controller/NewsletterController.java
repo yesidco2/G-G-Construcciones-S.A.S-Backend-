@@ -30,7 +30,7 @@ public class NewsletterController {
             NewsletterService newsletterService,
             CaptchaService captchaService,
             RateLimitService rateLimitService,
-            @Value("${app.rate-limit.contacto-per-hour:5}") int requestLimit,
+            @Value("${app.rate-limit.newsletter-per-hour:5}") int requestLimit,
             @Value("${app.captcha.enabled:true}") boolean captchaEnabled) {
         this.newsletterService = newsletterService;
         this.captchaService = captchaService;

@@ -26,7 +26,6 @@ public class ObraRequest {
     @Size(max = 255)
     private String cliente;
 
-    @NotNull
     @Positive
     private Long clienteId;
 

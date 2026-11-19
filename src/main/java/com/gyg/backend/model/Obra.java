@@ -1,6 +1,10 @@
 package com.gyg.backend.model;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
@@ -8,7 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "obras")
+@DynamicUpdate
+@Table(name = "obras_ingenieros", schema = "apoyo")
 public class Obra {
 
     @Id
@@ -21,6 +26,10 @@ public class Obra {
     @Column(name = "codigo_hash", nullable = false, unique = true, length = 64)
     private String codigoHash;
 
+    @JsonIgnore
+    @Column(name = "codigo_cifrado", length = 160)
+    private String codigoCifrado;
+
     @Column(name = "codigo_legacy", nullable = false)
     private boolean codigoLegacy;
 
@@ -30,7 +39,7 @@ public class Obra {
     @Column(name = "porcentaje_avance", nullable = false)
     private Integer porcentajeAvance = 0;
 
-    @Column(name = "cliente_id", nullable = false)
+    @Column(name = "cliente_id")
     private Long clienteId;
 
     @Column(name = "cliente", nullable = false)
@@ -51,11 +60,34 @@ public class Obra {
     @Column(name = "eliminada_en")
     private LocalDateTime eliminadaEn;
 
-    @OneToMany(mappedBy = "obra", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<FotoObra> fotos = new ArrayList<>();
-
-    @OneToMany(mappedBy = "obra", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false)
     private List<HitoObra> hitos = new ArrayList<>();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false)
+    private List<AsignacionObra> asignaciones = new ArrayList<>();
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false)
+    private List<FotoObraGuardada> fotos = new ArrayList<>();
+
+    public List<AsignacionObra> getAsignaciones() {
+        return asignaciones;
+    }
+
+    public List<FotoObraGuardada> getFotos() {
+        return fotos;
+    }
+
+    public boolean estaAsignadaA(Long usuarioId) {
+        return usuarioId != null && asignaciones.stream().anyMatch(a -> usuarioId.equals(a.usuarioId()));
+    }
+
+    public FotoObraGuardada buscarFoto(Long fotoId) {
+        return fotos.stream().filter(foto -> fotoId.equals(foto.id())).findFirst()
+                .orElseThrow(() -> new com.gyg.backend.exception.ResourceNotFoundException("No existe la foto solicitada."));
+    }
 
     public Obra() {
     }
@@ -93,6 +125,14 @@ public class Obra {
 
     public void setCodigoHash(String codigoHash) {
         this.codigoHash = codigoHash;
+    }
+
+    public String getCodigoCifrado() {
+        return codigoCifrado;
+    }
+
+    public void setCodigoCifrado(String codigoCifrado) {
+        this.codigoCifrado = codigoCifrado;
     }
 
     public boolean isCodigoLegacy() {
@@ -175,14 +215,6 @@ public class Obra {
         this.eliminadaEn = eliminadaEn;
     }
 
-    public List<FotoObra> getFotos() {
-        return fotos;
-    }
-
-    public void setFotos(List<FotoObra> fotos) {
-        this.fotos = fotos;
-    }
-
     public List<HitoObra> getHitos() {
         return hitos;
     }
@@ -193,20 +225,10 @@ public class Obra {
 
     public void addHito(HitoObra hito) {
         hitos.add(hito);
-        hito.setObra(this);
     }
 
     public void clearHitos() {
         hitos.clear();
     }
 
-    public void addFoto(FotoObra foto) {
-        fotos.add(foto);
-        foto.setObra(this);
-    }
-
-    public void removeFoto(FotoObra foto) {
-        fotos.remove(foto);
-        foto.setObra(null);
-    }
 }

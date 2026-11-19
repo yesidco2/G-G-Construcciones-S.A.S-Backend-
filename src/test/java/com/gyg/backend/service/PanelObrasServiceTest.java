@@ -4,18 +4,15 @@ import com.gyg.backend.dto.panel.ProgresoObraRequest;
 import com.gyg.backend.dto.panel.ObraRequest;
 import com.gyg.backend.dto.panel.ObraUpdateRequest;
 import com.gyg.backend.exception.ResourceNotFoundException;
-import com.gyg.backend.model.FotoObra;
 import com.gyg.backend.model.Obra;
 import com.gyg.backend.model.Rol;
 import com.gyg.backend.model.Usuario;
 import com.gyg.backend.repository.AuditoriaEventoRepository;
-import com.gyg.backend.repository.FotoObraRepository;
-import com.gyg.backend.repository.ObraIngenieroRepository;
+import com.gyg.backend.model.AsignacionObra;
 import com.gyg.backend.repository.ObraRepository;
 import com.gyg.backend.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -37,15 +34,11 @@ class PanelObrasServiceTest {
     @Mock
     private ObraRepository obraRepository;
     @Mock
-    private ObraIngenieroRepository assignmentRepository;
+    private ObraImageService imageService;
     @Mock
     private UsuarioRepository usuarioRepository;
     @Mock
-    private FotoObraRepository fotoRepository;
-    @Mock
     private AuditoriaEventoRepository auditRepository;
-    @Mock
-    private ObraPhotoStorageService photoStorage;
     @Mock
     private TrackingCodeService trackingCodeService;
 
@@ -53,12 +46,27 @@ class PanelObrasServiceTest {
     private PanelObrasService service;
 
     @Test
+    void listsOnlyLinkedClientsAndProvidesALabelWhenTheProfileHasNoNameOrEmail() {
+        Usuario client = user(Rol.CLIENTE, "client-uid");
+        client.setId(2L);
+        Usuario pending = user(Rol.CLIENTE, null);
+        pending.setId(3L);
+        when(usuarioRepository.findAllByRolAndActivoTrueOrderByNombreAsc(Rol.CLIENTE))
+                .thenReturn(java.util.List.of(client, pending));
+        when(usuarioRepository.findById(3L)).thenReturn(Optional.of(pending));
+        Usuario admin = user(Rol.ADMIN, "admin-uid");
+
+        var clients = service.listarClientes(admin);
+        assertEquals(1, clients.size());
+        assertEquals("Cliente #2", clients.get(0).nombre());
+        assertThrows(ResourceNotFoundException.class, () -> service.crear(obraRequest(3L), admin, "127.0.0.1"));
+    }
+
+    @Test
     void shouldForbidEngineerFromOperatingOnUnassignedWork() {
         Usuario engineer = user(Rol.INGENIERO, "engineer-uid");
         Obra obra = obra(10L);
         when(obraRepository.findByIdAndEliminadaEnIsNull(10L)).thenReturn(Optional.of(obra));
-        when(assignmentRepository.existsByObra_IdAndUsuario_FirebaseUid(10L, "engineer-uid"))
-                .thenReturn(false);
 
         assertThrows(AccessDeniedException.class, () -> service.obtener(10L, engineer));
     }
@@ -168,15 +176,15 @@ class PanelObrasServiceTest {
     }
 
     @Test
-    void shouldNotAllowEngineersToCreateOrReassignWorkClients() {
+    void shouldNotAllowEngineersToLinkRegisteredClientAccounts() {
         Usuario engineer = user(Rol.INGENIERO, "engineer-uid");
         assertThrows(AccessDeniedException.class,
                 () -> service.crear(obraRequest(2L), engineer, "127.0.0.1"));
 
         Obra obra = obra(10L);
         when(obraRepository.findActiveByIdForUpdate(10L)).thenReturn(Optional.of(obra));
-        when(assignmentRepository.existsByObra_IdAndUsuario_FirebaseUid(10L, "engineer-uid"))
-                .thenReturn(true);
+        engineer.setId(3L);
+        obra.getAsignaciones().add(new AsignacionObra(3L, "admin-uid", java.time.LocalDateTime.now()));
         assertThrows(AccessDeniedException.class,
                 () -> service.actualizar(10L, obraRequest(2L), engineer, "127.0.0.1"));
     }
@@ -227,39 +235,6 @@ class PanelObrasServiceTest {
         assertEquals("NEW-SECURE-CODE", response.codigoSeguimiento());
         assertEquals("new-hash", obra.getCodigoHash());
         org.junit.jupiter.api.Assertions.assertFalse(obra.isCodigoLegacy());
-    }
-
-    @Test
-    void shouldStorePhotoDescriptionAndDeleteOnlyAuthorizedPhotos() throws Exception {
-        Obra obra = obra(10L);
-        when(obraRepository.findActiveByIdForUpdate(10L)).thenReturn(Optional.of(obra));
-        when(obraRepository.findByIdAndEliminadaEnIsNull(10L)).thenReturn(Optional.of(obra));
-        when(fotoRepository.countByObra_Id(10L)).thenReturn(0L);
-        when(photoStorage.store(any())).thenReturn(
-                new ObraPhotoStorageService.StoredPhoto("generated.png", "image/png"));
-        when(fotoRepository.saveAndFlush(any(FotoObra.class))).thenAnswer(invocation -> {
-            FotoObra photo = invocation.getArgument(0);
-            photo.setId(20L);
-            photo.getObra().addFoto(photo);
-            return photo;
-        });
-
-        var response = service.subirFoto(10L, new org.springframework.mock.web.MockMultipartFile(
-                "archivo", "obra.png", "image/png", new byte[] {1}), "Avance de cimentación",
-                user(Rol.ADMIN, "admin-uid"), "127.0.0.1");
-        assertEquals("Avance de cimentación", response.fotos().get(0).descripcion());
-
-        ArgumentCaptor<FotoObra> photoCaptor = ArgumentCaptor.forClass(FotoObra.class);
-        verify(fotoRepository).saveAndFlush(photoCaptor.capture());
-        assertEquals("Avance de cimentación", photoCaptor.getValue().getDescripcion());
-
-        when(fotoRepository.findByIdAndObra_Id(20L, 10L)).thenReturn(Optional.of(photoCaptor.getValue()));
-        when(photoStorage.read("generated.png")).thenReturn(new byte[] {1, 2, 3});
-        assertEquals(3, service.obtenerFoto(10L, 20L, user(Rol.ADMIN, "admin-uid")).content().length);
-
-        service.eliminarFoto(10L, 20L, user(Rol.ADMIN, "admin-uid"), "127.0.0.1");
-        verify(photoStorage).delete("generated.png");
-        verify(fotoRepository).delete(photoCaptor.getValue());
     }
 
     private Usuario user(Rol role, String uid) {

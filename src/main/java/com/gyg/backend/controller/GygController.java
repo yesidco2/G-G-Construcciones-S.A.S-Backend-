@@ -8,27 +8,25 @@ import com.gyg.backend.exception.ResourceNotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
-import jakarta.validation.constraints.Positive;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.nio.charset.StandardCharsets;
-import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api")
@@ -36,8 +34,7 @@ import java.util.Set;
 @Tag(name = "G&G Construcciones API", description = "Servicios REST para el portal de G&G Construcciones (Ingenieria Civil y Consultoria SST)")
 public class GygController {
 
-        private static final java.util.regex.Pattern CONTACT_LINK_PATTERN =
-            java.util.regex.Pattern.compile("(?i)(https?://|www\\.)");
+    private static final Pattern CONTACT_LINK_PATTERN = Pattern.compile("(?i)(https?://|www\\.)");
 
     @Autowired
     private GygService gygService;
@@ -88,8 +85,7 @@ public class GygController {
             @RequestHeader(name = "X-Captcha-Token", required = false) String captchaToken,
             HttpServletRequest httpRequest) {
         if (request.getSitioWeb() != null && !request.getSitioWeb().isBlank()) {
-            return ResponseEntity.status(HttpStatus.CREATED).body(
-                    new ContactoResponse(0L));
+            return ResponseEntity.status(HttpStatus.CREATED).body(new ContactoResponse(0L));
         }
 
         if (captchaEnabled) {
@@ -123,10 +119,10 @@ public class GygController {
                     "motivo", "no puede contener más de 2 enlaces"));
         }
         if (request.getTipoServicio() != null
-            && !ContactoRequest.TIPOS_SERVICIO_PERMITIDOS.contains(request.getTipoServicio())) {
+                && !ContactoRequest.TIPOS_SERVICIO_PERMITIDOS.contains(request.getTipoServicio())) {
             invalidFields.add(Map.of(
-                "campo", "tipoServicio",
-                "motivo", "el valor no está permitido"));
+                    "campo", "tipoServicio",
+                    "motivo", "el valor no está permitido"));
         }
         if (!invalidFields.isEmpty()) {
             return contactoValidationError(invalidFields);
@@ -136,7 +132,7 @@ public class GygController {
         return ResponseEntity.status(HttpStatus.CREATED).body(new ContactoResponse(0L));
     }
 
-        private static ResponseEntity<Map<String, Object>> contactoValidationError(
+    private static ResponseEntity<Map<String, Object>> contactoValidationError(
             List<Map<String, String>> invalidFields) {
         return ResponseEntity.badRequest().body(Map.of(
                 "codigo", "CONTACTO_VALIDATION_ERROR",
@@ -173,38 +169,30 @@ public class GygController {
         try {
             return ResponseEntity.ok(gygService.getSeguimientoProyecto(request.getCodigo()));
         } catch (ResourceNotFoundException notFound) {
-            rateLimitService.check(
-                    "seguimiento-fallido",
-                    httpRequest, seguimientoFailedPer15Min, Duration.ofMinutes(15),
-                    "Demasiados intentos de seguimiento. Intenta más tarde.");
+            rateLimitSeguimientoFallido(httpRequest);
             throw notFound;
         }
     }
 
     @PostMapping("/obras/seguimiento/fotos/{fotoId}")
-    @Operation(summary = "Descargar una foto de seguimiento usando su código de acceso")
     public ResponseEntity<byte[]> getSeguimientoFoto(
-            @PathVariable @Positive Long fotoId,
-            @Valid @RequestBody SeguimientoRequest request,
-            HttpServletRequest httpRequest) throws IOException {
+            @PathVariable @Positive Long fotoId, @Valid @RequestBody SeguimientoRequest request,
+            HttpServletRequest httpRequest) {
         rateLimitSeguimiento(httpRequest);
         try {
-            GygService.StoredImage image = gygService.getSeguimientoFoto(request.getCodigo(), fotoId);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType(image.contentType()));
-            headers.setContentDisposition(ContentDisposition.inline()
-                    .filename("foto-seguimiento.png", StandardCharsets.UTF_8)
-                    .build());
-            headers.set("X-Content-Type-Options", "nosniff");
-            headers.setCacheControl("no-store");
-            return new ResponseEntity<>(image.content(), headers, HttpStatus.OK);
+            return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG)
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .header("X-Content-Type-Options", "nosniff")
+                    .body(gygService.getSeguimientoFoto(request.getCodigo(), fotoId));
         } catch (ResourceNotFoundException notFound) {
-            rateLimitService.check(
-                    "seguimiento-fallido",
-                    httpRequest, seguimientoFailedPer15Min, Duration.ofMinutes(15),
-                    "Demasiados intentos de seguimiento. Intenta más tarde.");
+            rateLimitSeguimientoFallido(httpRequest);
             throw notFound;
         }
+    }
+
+    private void rateLimitSeguimientoFallido(HttpServletRequest request) {
+        rateLimitService.check("seguimiento-fallido", request, seguimientoFailedPer15Min, Duration.ofMinutes(15),
+                "Demasiados intentos de seguimiento. Intenta más tarde.");
     }
 
     private void rateLimitSeguimiento(HttpServletRequest request) {

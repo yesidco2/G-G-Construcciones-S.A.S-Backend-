@@ -9,14 +9,14 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
-import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import com.gyg.backend.service.CaptchaFailureCode;
 import com.gyg.backend.service.CaptchaVerificationException;
 import com.gyg.backend.service.EmailDeliveryException;
@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import jakarta.validation.ConstraintViolationException;
 
@@ -65,10 +66,16 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({ConstraintViolationException.class, MethodArgumentTypeMismatchException.class,
-            MissingServletRequestParameterException.class})
+            MissingServletRequestParameterException.class, MissingServletRequestPartException.class})
     public ResponseEntity<Map<String, Object>> handleInvalidParameter(Exception ex, WebRequest request) {
         return createErrorResponse(
                 HttpStatus.BAD_REQUEST, "Bad Request", "La solicitud contiene datos no válidos.", request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleUploadLimit(WebRequest request) {
+        return createErrorResponse(HttpStatus.PAYLOAD_TOO_LARGE, "Payload Too Large",
+                "La imagen supera el tamaño permitido.", request);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -135,7 +142,7 @@ public class GlobalExceptionHandler {
             return ResponseEntity.badRequest().body(Map.of(
                     "codigo", "CONTACTO_VALIDATION_ERROR",
                     "mensaje", "La solicitud contiene campos inválidos.",
-                    "camposInvalidos", java.util.List.of(Map.of(
+                    "camposInvalidos", List.of(Map.of(
                             "campo", "cuerpo", "motivo", "formato inválido"))));
         }
         return createErrorResponse(
@@ -165,23 +172,6 @@ public class GlobalExceptionHandler {
             WebRequest request) {
         return createErrorResponse(
                 HttpStatus.NOT_FOUND, "Not Found", "No se encontro el recurso solicitado.", request);
-    }
-
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<Map<String, Object>> handleUploadTooLarge(
-            MaxUploadSizeExceededException ex,
-            WebRequest request) {
-        return createErrorResponse(
-                HttpStatus.PAYLOAD_TOO_LARGE, "Payload Too Large",
-                "El archivo supera el tamaño permitido.", request);
-    }
-
-    @ExceptionHandler(MultipartException.class)
-    public ResponseEntity<Map<String, Object>> handleInvalidMultipart(
-            MultipartException ex,
-            WebRequest request) {
-        return createErrorResponse(
-                HttpStatus.BAD_REQUEST, "Bad Request", "El formulario de carga no es válido.", request);
     }
 
     @ExceptionHandler(Exception.class)

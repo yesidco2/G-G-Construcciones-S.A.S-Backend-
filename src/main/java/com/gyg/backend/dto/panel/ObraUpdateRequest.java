@@ -16,6 +16,7 @@ import java.util.List;
 public class ObraUpdateRequest {
 
     private String nombre;
+    private String cliente;
     private Long clienteId;
     private String categoria;
     private EstadoObra estado;
@@ -25,6 +26,7 @@ public class ObraUpdateRequest {
     private LocalDate fechaFinEstimada;
     private List<HitoObraRequest> hitos;
     private boolean nombrePresent;
+    private boolean clientePresent;
     private boolean clienteIdPresent;
     private boolean categoriaPresent;
     private boolean estadoPresent;
@@ -40,6 +42,10 @@ public class ObraUpdateRequest {
 
     public boolean hasClienteId() {
         return clienteIdPresent;
+    }
+
+    public boolean hasCliente() {
+        return clientePresent;
     }
 
     public boolean hasCategoria() {
@@ -78,6 +84,16 @@ public class ObraUpdateRequest {
     public void setNombre(String nombre) {
         this.nombrePresent = true;
         this.nombre = nombre;
+    }
+
+    @Size(max = 255)
+    public String getCliente() {
+        return cliente;
+    }
+
+    public void setCliente(String cliente) {
+        this.clientePresent = true;
+        this.cliente = cliente;
     }
 
     @Positive

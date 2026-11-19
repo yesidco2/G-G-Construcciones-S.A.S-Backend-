@@ -1,12 +1,11 @@
 package com.gyg.backend.service;
 
 import com.gyg.backend.dto.panel.*;
+import com.gyg.backend.dto.FotoObraDTO;
 import com.gyg.backend.exception.ConflictException;
 import com.gyg.backend.exception.ResourceNotFoundException;
 import com.gyg.backend.model.*;
 import com.gyg.backend.repository.AuditoriaEventoRepository;
-import com.gyg.backend.repository.FotoObraRepository;
-import com.gyg.backend.repository.ObraIngenieroRepository;
 import com.gyg.backend.repository.ObraRepository;
 import com.gyg.backend.repository.UsuarioRepository;
 import org.springframework.security.access.AccessDeniedException;
@@ -14,64 +13,54 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Base64;
+import java.util.Objects;
 
 @Service
 public class PanelObrasService {
 
-    private static final long MAX_PHOTO_BYTES = 5L * 1024 * 1024;
-    private static final long MAX_PHOTOS_PER_OBRA = 20;
-
     private final ObraRepository obraRepository;
-    private final ObraIngenieroRepository assignmentRepository;
+    private final ObraImageService imageService;
+    private final FotosObraService fotosObraService;
     private final UsuarioRepository usuarioRepository;
-    private final FotoObraRepository fotoRepository;
     private final AuditoriaEventoRepository auditRepository;
-    private final ObraPhotoStorageService photoStorage;
     private final TrackingCodeService trackingCodeService;
 
     public PanelObrasService(
             ObraRepository obraRepository,
-            ObraIngenieroRepository assignmentRepository,
+            ObraImageService imageService,
+            FotosObraService fotosObraService,
             UsuarioRepository usuarioRepository,
-            FotoObraRepository fotoRepository,
             AuditoriaEventoRepository auditRepository,
-            ObraPhotoStorageService photoStorage,
             TrackingCodeService trackingCodeService) {
         this.obraRepository = obraRepository;
-        this.assignmentRepository = assignmentRepository;
+        this.imageService = imageService;
+        this.fotosObraService = fotosObraService;
         this.usuarioRepository = usuarioRepository;
-        this.fotoRepository = fotoRepository;
         this.auditRepository = auditRepository;
-        this.photoStorage = photoStorage;
         this.trackingCodeService = trackingCodeService;
     }
 
     @Transactional(readOnly = true)
     public List<ObraResponse> listar(Usuario actor) {
         requireEngineerOrAdmin(actor);
-        List<Obra> obras = actor.getRol() == Rol.ADMIN
-                ? obraRepository.findAllByEliminadaEnIsNullOrderByIdDesc()
-                : assignmentRepository
-                        .findAllByUsuario_FirebaseUidAndObra_EliminadaEnIsNullOrderByObra_IdDesc(
-                                actor.getFirebaseUid())
-                        .stream()
-                        .map(ObraIngeniero::getObra)
-                        .toList();
-        return obras.stream().map(this::toResponse).toList();
+        return obraRepository.findAllByEliminadaEnIsNullOrderByIdDesc().stream()
+                .filter(obra -> actor.getRol() == Rol.ADMIN || obra.estaAsignadaA(actor.getId()))
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public List<ClienteObraResponse> listarClientes(Usuario actor) {
         requireAdmin(actor);
         return usuarioRepository.findAllByRolAndActivoTrueOrderByNombreAsc(Rol.CLIENTE).stream()
+                .filter(PanelObrasService::hasFirebaseAccount)
                 .map(cliente -> new ClienteObraResponse(
                         cliente.getId(),
-                        cliente.getNombre() == null || cliente.getNombre().isBlank()
-                                ? cliente.getEmail() : cliente.getNombre(),
+                        clientDisplayName(cliente),
                         cliente.getEmail()))
                 .toList();
     }
@@ -85,11 +74,24 @@ public class PanelObrasService {
 
     @Transactional
     public ObraResponse crear(ObraRequest request, Usuario actor, String ip) {
-        requireAdmin(actor);
+        requireEngineerOrAdmin(actor);
         Obra obra = new Obra();
-        applyRequest(obra, request, resolveClient(request.getClienteId()));
+        if (request.getClienteId() != null) {
+            requireAdmin(actor);
+            setClient(obra, resolveClient(request.getClienteId()));
+        } else {
+            obra.setCliente(requireClientName(request.getCliente()));
+        }
+        if (actor.getRol() == Rol.INGENIERO) {
+            if (actor.getId() == null || !hasFirebaseAccount(actor)) {
+                throw new AccessDeniedException("Se requiere una cuenta de ingeniero vinculada.");
+            }
+            obra.getAsignaciones().add(new AsignacionObra(actor.getId(), actor.getFirebaseUid(), LocalDateTime.now()));
+        }
+        applyRequest(obra, request);
         TrackingCodeService.GeneratedTrackingCode generatedCode = trackingCodeService.generate();
         obra.setCodigoHash(generatedCode.hash());
+        obra.setCodigoCifrado(trackingCodeService.encrypt(generatedCode.value(), generatedCode.hash()));
         obra.setCodigoLegacy(false);
         Obra saved = obraRepository.saveAndFlush(obra);
         audit(actor, "OBRA_CREADA", saved.getId(), ip);
@@ -100,12 +102,11 @@ public class PanelObrasService {
     public ObraResponse actualizar(Long obraId, ObraRequest request, Usuario actor, String ip) {
         Obra obra = loadForUpdate(obraId);
         requireCanOperate(obra, actor);
-        if (actor.getRol() != Rol.ADMIN && !obra.getClienteId().equals(request.getClienteId())) {
-            throw new AccessDeniedException("Solo un administrador puede cambiar el cliente de una obra.");
+        if (request.getClienteId() != null && !Objects.equals(obra.getClienteId(), request.getClienteId())) {
+            requireAdmin(actor);
+            setClient(obra, resolveClient(request.getClienteId()));
         }
-        Usuario client = obra.getClienteId().equals(request.getClienteId())
-                ? null : resolveClient(request.getClienteId());
-        applyRequest(obra, request, client);
+        applyRequest(obra, request);
         audit(actor, "OBRA_ACTUALIZADA", obra.getId(), ip);
         return toResponse(obra);
     }
@@ -115,7 +116,7 @@ public class PanelObrasService {
             Long obraId, ObraUpdateRequest request, Usuario actor, String ip) {
         Obra obra = loadForUpdate(obraId);
         requireCanOperate(obra, actor);
-        if (!(request.hasNombre() || request.hasClienteId() || request.hasCategoria()
+        if (!(request.hasNombre() || request.hasCliente() || request.hasClienteId() || request.hasCategoria()
                 || request.hasEstado() || request.hasProgreso() || request.hasDescripcion()
                 || request.hasFechaInicio() || request.hasFechaFinEstimada() || request.hasHitos())) {
             throw new IllegalArgumentException("Debes indicar al menos un campo para actualizar.");
@@ -131,12 +132,15 @@ public class PanelObrasService {
             if (request.getClienteId() == null) {
                 throw new IllegalArgumentException("El cliente de la obra es obligatorio.");
             }
-            if (actor.getRol() != Rol.ADMIN && !obra.getClienteId().equals(request.getClienteId())) {
+            if (actor.getRol() != Rol.ADMIN && !Objects.equals(obra.getClienteId(), request.getClienteId())) {
                 throw new AccessDeniedException("Solo un administrador puede cambiar el cliente de una obra.");
             }
-            if (!obra.getClienteId().equals(request.getClienteId())) {
+            if (!Objects.equals(obra.getClienteId(), request.getClienteId())) {
                 setClient(obra, resolveClient(request.getClienteId()));
             }
+        }
+        if (request.hasCliente()) {
+            obra.setCliente(requireClientName(request.getCliente()));
         }
         if (request.hasCategoria()) {
             if (request.getCategoria() == null || request.getCategoria().isBlank()) {
@@ -168,7 +172,7 @@ public class PanelObrasService {
         if (request.hasHitos()) {
             obra.clearHitos();
             if (request.getHitos() != null) {
-                request.getHitos().forEach(input -> obra.addHito(toHito(input)));
+                request.getHitos().forEach(input -> agregarHito(obra, input));
             }
         }
 
@@ -198,10 +202,11 @@ public class PanelObrasService {
 
     @Transactional
     public ObraResponse regenerarCodigoSeguimiento(Long obraId, Usuario actor, String ip) {
-        requireAdmin(actor);
         Obra obra = loadForUpdate(obraId);
+        requireCanOperate(obra, actor);
         TrackingCodeService.GeneratedTrackingCode generatedCode = trackingCodeService.generate();
         obra.setCodigoHash(generatedCode.hash());
+        obra.setCodigoCifrado(trackingCodeService.encrypt(generatedCode.value(), generatedCode.hash()));
         obra.setCodigoLegacy(false);
         audit(actor, "CODIGO_SEGUIMIENTO_ROTADO", obra.getId(), ip);
         return toResponse(obra, generatedCode.value());
@@ -221,75 +226,18 @@ public class PanelObrasService {
         Obra obra = loadForUpdate(obraId);
         Usuario ingeniero = usuarioRepository.findByIdForUpdate(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el ingeniero solicitado."));
-        if (!ingeniero.isActivo() || ingeniero.getRol() != Rol.INGENIERO) {
+        if (!ingeniero.isActivo() || ingeniero.getRol() != Rol.INGENIERO || !hasFirebaseAccount(ingeniero)) {
             throw new ConflictException("Solo se pueden asignar ingenieros activos.");
         }
-        if (assignmentRepository.existsByObra_IdAndUsuario_Id(obraId, usuarioId)) {
+        if (obra.estaAsignadaA(usuarioId)) {
             throw new ConflictException("El ingeniero ya está asignado a esta obra.");
         }
-        assignmentRepository.save(new ObraIngeniero(obra, ingeniero, actor.getFirebaseUid()));
+        obra.getAsignaciones().add(new AsignacionObra(ingeniero.getId(), actor.getFirebaseUid(), LocalDateTime.now()));
         audit(actor, "INGENIERO_ASIGNADO", obra.getId(), ip);
         return toResponse(obra);
     }
 
-    @Transactional
-    public ObraResponse subirFoto(
-            Long obraId, MultipartFile file, String description, Usuario actor, String ip) throws IOException {
-        Obra obra = loadForUpdate(obraId);
-        requireCanOperate(obra, actor);
-        if (file == null || file.getSize() > MAX_PHOTO_BYTES) {
-            throw new IllegalArgumentException("La imagen no puede superar 5 MB.");
-        }
-        String normalizedDescription = trimToNull(description);
-        if (normalizedDescription != null && normalizedDescription.length() > 1000) {
-            throw new IllegalArgumentException("La descripción de la fotografía no puede superar 1000 caracteres.");
-        }
-        if (fotoRepository.countByObra_Id(obraId) >= MAX_PHOTOS_PER_OBRA) {
-            throw new ConflictException("La obra alcanzó el máximo de 20 fotografías.");
-        }
-
-        ObraPhotoStorageService.StoredPhoto stored = photoStorage.store(file);
-        try {
-            FotoObra foto = new FotoObra("pending", LocalDate.now(), obra);
-            foto.setStorageKey(stored.key());
-            foto.setSubidoPor(actor.getFirebaseUid());
-            foto.setDescripcion(normalizedDescription);
-            FotoObra saved = fotoRepository.saveAndFlush(foto);
-            saved.setUrl("/api/panel/obras/" + obraId + "/fotos/" + saved.getId());
-            audit(actor, "FOTO_SUBIDA", obraId, ip);
-            return obtener(obraId, actor);
-        } catch (RuntimeException exception) {
-            photoStorage.delete(stored.key());
-            throw exception;
-        }
-    }
-
-    @Transactional(readOnly = true)
-    public StoredImage obtenerFoto(Long obraId, Long fotoId, Usuario actor) throws IOException {
-        Obra obra = loadActive(obraId);
-        requireCanOperate(obra, actor);
-        FotoObra foto = fotoRepository.findByIdAndObra_Id(fotoId, obraId)
-                .orElseThrow(() -> new ResourceNotFoundException("No existe la fotografía solicitada."));
-        if (foto.getStorageKey() == null) {
-            throw new ResourceNotFoundException("No existe la fotografía solicitada.");
-        }
-        return new StoredImage(photoStorage.read(foto.getStorageKey()), "image/png");
-    }
-
-    @Transactional
-    public void eliminarFoto(Long obraId, Long fotoId, Usuario actor, String ip) throws IOException {
-        Obra obra = loadForUpdate(obraId);
-        requireCanOperate(obra, actor);
-        FotoObra foto = fotoRepository.findByIdAndObra_Id(fotoId, obraId)
-                .orElseThrow(() -> new ResourceNotFoundException("No existe la fotografía solicitada."));
-        if (foto.getStorageKey() != null) {
-            photoStorage.delete(foto.getStorageKey());
-        }
-        fotoRepository.delete(foto);
-        audit(actor, "FOTO_ELIMINADA", obraId, ip);
-    }
-
-    private void applyRequest(Obra obra, ObraRequest request, Usuario client) {
+    private void applyRequest(Obra obra, ObraRequest request) {
         validateProgress(request.getProgreso());
         validateDateRange(request.getFechaInicio(), request.getFechaFinEstimada());
         EstadoObra nextState = request.getEstado();
@@ -297,11 +245,6 @@ public class PanelObrasService {
             validateTransition(obra, nextState);
         }
         obra.setNombreObra(request.getNombre().trim());
-        if (client != null) {
-            setClient(obra, client);
-        } else if (obra.getId() == null) {
-            throw new IllegalArgumentException("El cliente de la obra es obligatorio.");
-        }
         obra.setCategoria(request.getCategoria());
         obra.setEstado(nextState.name());
         obra.setPorcentajeAvance(request.getProgreso());
@@ -310,7 +253,7 @@ public class PanelObrasService {
         obra.setFechaFinEstimada(request.getFechaFinEstimada());
         obra.clearHitos();
         if (request.getHitos() != null) {
-            request.getHitos().forEach(input -> obra.addHito(toHito(input)));
+            request.getHitos().forEach(input -> agregarHito(obra, input));
         }
     }
 
@@ -321,22 +264,40 @@ public class PanelObrasService {
         return usuarioRepository.findById(clientId)
                 .filter(Usuario::isActivo)
                 .filter(usuario -> usuario.getRol() == Rol.CLIENTE)
+                .filter(PanelObrasService::hasFirebaseAccount)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el cliente solicitado."));
     }
 
     private static void setClient(Obra obra, Usuario client) {
         obra.setClienteId(client.getId());
-        obra.setCliente(client.getNombre() == null || client.getNombre().isBlank()
-                ? client.getEmail() : client.getNombre());
+        obra.setCliente(clientDisplayName(client));
     }
 
-    private static HitoObra toHito(HitoObraRequest input) {
-        HitoObra hito = new HitoObra();
-        hito.setNombre(input.getNombre().trim());
-        hito.setDescripcion(input.getDescripcion());
-        hito.setFechaObjetivo(input.getFechaObjetivo());
-        hito.setCompletado(input.isCompletado());
-        return hito;
+    private static boolean hasFirebaseAccount(Usuario usuario) {
+        return usuario.getFirebaseUid() != null && !usuario.getFirebaseUid().isBlank();
+    }
+
+    private static String requireClientName(String value) {
+        String name = trimToNull(value);
+        if (name == null) {
+            throw new IllegalArgumentException("Indica el nombre del cliente.");
+        }
+        return name;
+    }
+
+    private static String clientDisplayName(Usuario cliente) {
+        if (cliente.getNombre() != null && !cliente.getNombre().isBlank()) {
+            return cliente.getNombre();
+        }
+        if (cliente.getEmail() != null && !cliente.getEmail().isBlank()) {
+            return cliente.getEmail();
+        }
+        return "Cliente #" + cliente.getId();
+    }
+
+    private static void agregarHito(Obra obra, HitoObraRequest input) {
+        obra.addHito(new HitoObra((long) obra.getHitos().size() + 1, input.getNombre().trim(),
+                input.getDescripcion(), input.getFechaObjetivo(), input.isCompletado()));
     }
 
     private static void validateTransition(Obra obra, EstadoObra nextState) {
@@ -374,8 +335,7 @@ public class PanelObrasService {
     private void requireCanOperate(Obra obra, Usuario actor) {
         requireEngineerOrAdmin(actor);
         if (actor.getRol() == Rol.INGENIERO
-                && !assignmentRepository.existsByObra_IdAndUsuario_FirebaseUid(
-                        obra.getId(), actor.getFirebaseUid())) {
+                && !obra.estaAsignadaA(actor.getId())) {
             throw new AccessDeniedException("No tienes acceso a esta obra.");
         }
     }
@@ -404,29 +364,81 @@ public class PanelObrasService {
     }
 
     private ObraResponse toResponse(Obra obra) {
-        return toResponse(obra, null);
+        return toResponse(obra, obra.getCodigoCifrado() == null ? null
+                : trackingCodeService.decrypt(obra.getCodigoCifrado(), obra.getCodigoHash()));
     }
 
     private ObraResponse toResponse(Obra obra, String trackingCode) {
         List<HitoObraResponse> hitos = obra.getHitos().stream()
                 .map(hito -> new HitoObraResponse(
-                        hito.getId(), hito.getNombre(), hito.getDescripcion(),
-                        hito.getFechaObjetivo(), hito.isCompletado()))
+                        hito.id(), hito.nombre(), hito.descripcion(),
+                        hito.fechaObjetivo(), hito.completado()))
                 .toList();
-        List<FotoObraResponse> fotos = obra.getFotos().stream()
-                .map(foto -> new FotoObraResponse(
-                        foto.getId(),
-                        foto.getStorageKey() == null
-                                ? foto.getUrl()
-                                : "/api/panel/obras/" + obra.getId() + "/fotos/" + foto.getId(),
-                        foto.getFecha(), foto.getDescripcion(), foto.getSubidoPor()))
-                .toList();
+        List<FotoObraDTO> fotos = obra.getFotos().stream().map(foto -> toPhotoResponse(obra, foto)).toList();
         return new ObraResponse(
                 obra.getId(), obra.getNombreObra(), obra.getCliente(), obra.getClienteId(),
                 obra.getCategoria(), obra.getEstado(), obra.getPorcentajeAvance(), obra.getDescripcion(),
                 obra.getFechaInicio(), obra.getFechaFinEstimada(), hitos, fotos, trackingCode);
     }
 
-    public record StoredImage(byte[] content, String contentType) {
+    private FotoObraDTO toPhotoResponse(Obra obra, FotoObraGuardada foto) {
+        return new FotoObraDTO(foto.id(), foto.nombre(), "/api/panel/obras/" + obra.getId() + "/fotos/" + foto.id(),
+                foto.fecha(), foto.descripcion());
+    }
+
+    @Transactional
+    public FotoObraDTO subirFoto(Long obraId, MultipartFile archivo, String descripcion, Usuario actor, String ip) {
+        Obra obra = loadForUpdate(obraId);
+        requireCanOperate(obra, actor);
+        if (descripcion != null && descripcion.length() > 1000) {
+            throw new IllegalArgumentException("La descripción de la foto admite hasta 1000 caracteres.");
+        }
+        String base64 = Base64.getEncoder().encodeToString(imageService.sanitize(archivo));
+        ContenidoFotosObra contenido = fotosObraService.contenido(obraId);
+        for (FotoObraGuardada foto : obra.getFotos()) {
+            if (base64.equals(contenido.getContenido().get(foto.id().toString()))) {
+                return toPhotoResponse(obra, foto);
+            }
+        }
+        if (obra.getFotos().size() >= 20) {
+            throw new ConflictException("La obra admite hasta 20 fotos.");
+        }
+        long fotoId;
+        do {
+            fotoId = java.util.concurrent.ThreadLocalRandom.current().nextLong(1, 1L << 53);
+        } while (contieneFoto(obra, fotoId));
+        String nombre = archivo.getOriginalFilename();
+        if (nombre == null || nombre.isBlank()) {
+            nombre = "foto.png";
+        }
+        nombre = nombre.replace('\\', '/');
+        nombre = nombre.substring(nombre.lastIndexOf('/') + 1);
+        FotoObraGuardada foto = new FotoObraGuardada(fotoId, nombre.substring(0, Math.min(nombre.length(), 200)),
+                LocalDate.now(), trimToNull(descripcion), actor.getFirebaseUid());
+        obra.getFotos().add(foto);
+        contenido.guardar(fotoId, base64);
+        audit(actor, "FOTO_OBRA_SUBIDA", obraId, ip);
+        return toPhotoResponse(obra, foto);
+    }
+
+    private boolean contieneFoto(Obra obra, long fotoId) {
+        return obra.getFotos().stream().anyMatch(foto -> foto.id() == fotoId);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] obtenerFoto(Long obraId, Long fotoId, Usuario actor) {
+        Obra obra = loadActive(obraId);
+        requireCanOperate(obra, actor);
+        obra.buscarFoto(fotoId);
+        return fotosObraService.obtener(obraId, fotoId);
+    }
+
+    @Transactional
+    public void eliminarFoto(Long obraId, Long fotoId, Usuario actor, String ip) {
+        Obra obra = loadForUpdate(obraId);
+        requireCanOperate(obra, actor);
+        obra.getFotos().remove(obra.buscarFoto(fotoId));
+        fotosObraService.contenido(obraId).eliminar(fotoId);
+        audit(actor, "FOTO_OBRA_ELIMINADA", obraId, ip);
     }
 }

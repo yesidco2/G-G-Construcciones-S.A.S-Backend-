@@ -37,12 +37,13 @@ class ObraRequestValidationTest {
     }
 
     @Test
-    void shouldRequireClientStateAndProgressAndValidateDateOrder() {
+    void shouldValidateOptionalClientIdAndDateOrder() {
         ObraRequest request = new ObraRequest();
         request.setNombre("Obra");
         request.setCategoria("CIVIL");
         request.setEstado(EstadoObra.PLANIFICADA);
         request.setProgreso(0);
+        request.setClienteId(0L);
         request.setFechaInicio(LocalDate.of(2026, 12, 1));
         request.setFechaFinEstimada(LocalDate.of(2026, 1, 1));
 

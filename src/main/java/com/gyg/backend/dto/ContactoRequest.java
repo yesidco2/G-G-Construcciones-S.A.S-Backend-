@@ -45,7 +45,6 @@ public class ContactoRequest {
     private String mensaje;
 
     private String sitioWeb;
-
     private Boolean aceptaPolitica;
 
     @Size(max = 50, message = "La versión de la política no puede superar 50 caracteres")
@@ -54,7 +53,8 @@ public class ContactoRequest {
     public ContactoRequest() {
     }
 
-    public ContactoRequest(String nombre, String empresa, String correo, String telefono, String tipoServicio, String mensaje) {
+    public ContactoRequest(
+            String nombre, String empresa, String correo, String telefono, String tipoServicio, String mensaje) {
         this.nombre = nombre;
         this.empresa = empresa;
         this.correo = correo;
