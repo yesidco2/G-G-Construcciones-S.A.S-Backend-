@@ -43,6 +43,27 @@ public class UsuarioService {
 
     private Usuario crearORecuperarCarrera(
             String uid, String email, boolean emailVerificado, Map<String, Object> claims) {
+        if (email != null) {
+            Usuario pending = usuarioRepository.findAuthorizationForUpdate(
+                    email.trim().toLowerCase(Locale.ROOT)).orElse(null);
+            if (pending != null && uid.equals(pending.getFirebaseUid())) {
+                aplicarDatosDelToken(pending, email, emailVerificado, claims);
+                return usuarioRepository.save(pending);
+            }
+            if (pending != null && pending.getFirebaseUid() == null) {
+                if (!emailVerificado) {
+                    Usuario principal = new Usuario();
+                    principal.setId(pending.getId());
+                    principal.setFirebaseUid(uid);
+                    principal.setActivo(pending.isActivo());
+                    aplicarDatosDelToken(principal, email, false, claims);
+                    return principal;
+                }
+                pending.setFirebaseUid(uid);
+                aplicarDatosDelToken(pending, email, true, claims);
+                return usuarioRepository.saveAndFlush(pending);
+            }
+        }
         Usuario usuario = new Usuario();
         usuario.setFirebaseUid(uid);
         aplicarDatosDelToken(usuario, email, emailVerificado, claims);

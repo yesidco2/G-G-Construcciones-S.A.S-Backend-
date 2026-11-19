@@ -5,14 +5,14 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "usuarios")
+@Table(name = "administradores_autorizados")
 public class Usuario {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "firebase_uid", nullable = false, unique = true)
+    @Column(name = "firebase_uid", unique = true)
     private String firebaseUid;
 
     @Column(name = "email")
@@ -33,6 +33,29 @@ public class Usuario {
 
     @Transient
     private boolean emailVerificado;
+
+    @Column(name = "autorizacion_email", unique = true)
+    private String autorizacionEmail;
+
+    @Enumerated(EnumType.STRING)
+    private Rol rolAutorizado;
+
+    private boolean autorizacionActiva;
+
+    private String autorizadoPor;
+
+    private LocalDateTime autorizadoEn;
+
+    public String getAutorizacionEmail() { return autorizacionEmail; }
+    public void setAutorizacionEmail(String value) { autorizacionEmail = value; }
+    public Rol getRolAutorizado() { return rolAutorizado; }
+    public void setRolAutorizado(Rol value) { rolAutorizado = value; }
+    public boolean isAutorizacionActiva() { return autorizacionActiva; }
+    public void setAutorizacionActiva(boolean value) { autorizacionActiva = value; }
+    public String getAutorizadoPor() { return autorizadoPor; }
+    public void setAutorizadoPor(String value) { autorizadoPor = value; }
+    public LocalDateTime getAutorizadoEn() { return autorizadoEn; }
+    public void setAutorizadoEn(LocalDateTime value) { autorizadoEn = value; }
 
     public Usuario() {
     }
