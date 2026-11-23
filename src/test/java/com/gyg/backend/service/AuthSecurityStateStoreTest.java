@@ -137,15 +137,15 @@ class AuthSecurityStateStoreTest {
     @Test
     void shouldShareVerifiedSessionsBetweenApplicationInstances() throws Exception {
         VerifiedSessionStore secondInstance = new VerifiedSessionStore(jdbcTemplate);
-        String firebaseUid = "test-" + UUID.randomUUID();
-        long authTime = System.currentTimeMillis() / 1000;
+        String supabaseUid = "test-" + UUID.randomUUID();
+        String sessionId = UUID.randomUUID().toString();
         long now = System.currentTimeMillis();
 
-        verifiedSessionStore.save(firebaseUid, authTime, now + 60_000, now);
+        verifiedSessionStore.save(supabaseUid, sessionId, now + 60_000, now);
 
-        assertTrue(secondInstance.matches(firebaseUid, authTime, now));
-        assertFalse(secondInstance.matches(firebaseUid, authTime + 1, now));
-        assertFalse(secondInstance.matches(firebaseUid, authTime, now + 60_000));
+        assertTrue(secondInstance.matches(supabaseUid, sessionId, now));
+        assertFalse(secondInstance.matches(supabaseUid, UUID.randomUUID().toString(), now));
+        assertFalse(secondInstance.matches(supabaseUid, sessionId, now + 60_000));
     }
 
     private static String hash(String value) throws Exception {

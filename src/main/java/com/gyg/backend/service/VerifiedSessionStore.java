@@ -17,34 +17,34 @@ public class VerifiedSessionStore {
     }
 
     @Transactional
-    public void save(String firebaseUid, long authTime, long expiresAt, long now) {
-        int stripe = Math.floorMod(firebaseUid.hashCode(), LOCK_STRIPES);
+    public void save(String supabaseUid, String sessionId, long expiresAt, long now) {
+        int stripe = Math.floorMod(supabaseUid.hashCode(), LOCK_STRIPES);
         jdbcTemplate.queryForObject(
                 "SELECT stripe_id FROM api_rate_limit_locks WHERE stripe_id = ? FOR UPDATE",
                 Short.class,
                 (short) stripe);
         jdbcTemplate.update("DELETE FROM verified_auth_sessions WHERE expires_at <= ?", now);
         int updated = jdbcTemplate.update(
-                "UPDATE verified_auth_sessions SET auth_time = ?, expires_at = ? WHERE firebase_uid = ?",
-                authTime,
+                "UPDATE verified_auth_sessions SET session_id = ?, expires_at = ? WHERE supabase_uid = ?",
+                sessionId,
                 expiresAt,
-                firebaseUid);
+                supabaseUid);
         if (updated == 0) {
             jdbcTemplate.update(
-                    "INSERT INTO verified_auth_sessions (firebase_uid, auth_time, expires_at) VALUES (?, ?, ?)",
-                    firebaseUid,
-                    authTime,
+                    "INSERT INTO verified_auth_sessions (supabase_uid, session_id, expires_at) VALUES (?, ?, ?)",
+                    supabaseUid,
+                    sessionId,
                     expiresAt);
         }
     }
 
-    public boolean matches(String firebaseUid, long authTime, long now) {
+    public boolean matches(String supabaseUid, String sessionId, long now) {
         Long count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM verified_auth_sessions "
-                        + "WHERE firebase_uid = ? AND auth_time = ? AND expires_at > ?",
+                        + "WHERE supabase_uid = ? AND session_id = ? AND expires_at > ?",
                 Long.class,
-                firebaseUid,
-                authTime,
+                supabaseUid,
+                sessionId,
                 now);
         return count != null && count == 1;
     }

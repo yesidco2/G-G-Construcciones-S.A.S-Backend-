@@ -1,6 +1,5 @@
 package com.gyg.backend.service;
 
-import com.google.firebase.auth.FirebaseToken;
 import com.gyg.backend.model.AdministradorAutorizado;
 import com.gyg.backend.model.Rol;
 import com.gyg.backend.model.Usuario;
@@ -26,13 +25,13 @@ public class UsuarioService {
     }
 
     @Transactional
-    public Usuario obtenerOCrear(FirebaseToken token) {
-        return obtenerOCrear(token.getUid(), token.getEmail(), token.isEmailVerified(), token.getClaims());
+    public Usuario obtenerOCrear(SupabaseAuth.Identity token) {
+        return obtenerOCrear(token.uid(), token.email(), token.emailVerified(), Map.of());
     }
 
     @Transactional
     Usuario obtenerOCrear(String uid, String email, boolean emailVerificado, Map<String, Object> claims) {
-        return usuarioRepository.findByFirebaseUid(uid)
+        return usuarioRepository.findBySupabaseUid(uid)
                 .map(usuario -> {
                     return aplicarDatosDelToken(usuario, email, emailVerificado, claims)
                             ? usuarioRepository.save(usuario)
@@ -46,31 +45,31 @@ public class UsuarioService {
         if (email != null) {
             Usuario pending = usuarioRepository.findAuthorizationForUpdate(
                     email.trim().toLowerCase(Locale.ROOT)).orElse(null);
-            if (pending != null && uid.equals(pending.getFirebaseUid())) {
+            if (pending != null && uid.equals(pending.getSupabaseUid())) {
                 aplicarDatosDelToken(pending, email, emailVerificado, claims);
                 return usuarioRepository.save(pending);
             }
-            if (pending != null && pending.getFirebaseUid() == null) {
+            if (pending != null && pending.getSupabaseUid() == null) {
                 if (!emailVerificado) {
                     Usuario principal = new Usuario();
                     principal.setId(pending.getId());
-                    principal.setFirebaseUid(uid);
+                    principal.setSupabaseUid(uid);
                     principal.setActivo(pending.isActivo());
                     aplicarDatosDelToken(principal, email, false, claims);
                     return principal;
                 }
-                pending.setFirebaseUid(uid);
+                pending.setSupabaseUid(uid);
                 aplicarDatosDelToken(pending, email, true, claims);
                 return usuarioRepository.saveAndFlush(pending);
             }
         }
         Usuario usuario = new Usuario();
-        usuario.setFirebaseUid(uid);
+        usuario.setSupabaseUid(uid);
         aplicarDatosDelToken(usuario, email, emailVerificado, claims);
         try {
             return usuarioRepository.saveAndFlush(usuario);
         } catch (DataIntegrityViolationException exception) {
-            return usuarioRepository.findByFirebaseUid(uid)
+            return usuarioRepository.findBySupabaseUid(uid)
                     .map(existing -> {
                         return aplicarDatosDelToken(existing, email, emailVerificado, claims)
                                 ? usuarioRepository.save(existing)
@@ -86,7 +85,7 @@ public class UsuarioService {
         Object name = claims.get("name");
         String nombre = name instanceof String value ? value : null;
 
-        Rol assignedRole = usuario.getRol() == Rol.CLIENTE ? Rol.CLIENTE : Rol.USUARIO;
+        Rol assignedRole = usuario.getRol() == Rol.CLIENTE ? Rol.CLIENTE : null;
         Rol rol = emailVerificado && normalizedEmail != null
                 ? administradorRepository.findByEmail(normalizedEmail)
                         .filter(AdministradorAutorizado::isActivo)

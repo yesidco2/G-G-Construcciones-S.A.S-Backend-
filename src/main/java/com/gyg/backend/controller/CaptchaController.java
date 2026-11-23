@@ -55,8 +55,8 @@ public class CaptchaController {
     public ResponseEntity<?> createSession(
             @Valid @RequestBody(required = false) SessionRequest sessionRequest,
             HttpServletRequest request) {
-        var firebaseToken = VerifiedSessionService.firebaseToken(request);
-        if (firebaseToken == null) {
+        var identity = VerifiedSessionService.identity(request);
+        if (identity == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("status", 401, "error", "No autorizado"));
         }
@@ -66,7 +66,7 @@ public class CaptchaController {
             return captchaRequired();
         }
         try {
-            Instant expiresAt = verifiedSessionService.create(firebaseToken);
+            Instant expiresAt = verifiedSessionService.create(identity);
             return ResponseEntity.ok(new SessionResponse(true, expiresAt));
         } catch (IllegalArgumentException exception) {
             return captchaRequired();

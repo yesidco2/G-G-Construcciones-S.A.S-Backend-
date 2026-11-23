@@ -21,9 +21,10 @@ class UnifiedAccountsMigrationTest {
         Flyway.configure().dataSource(url, "sa", "").load().migrate();
         try (var connection = DriverManager.getConnection(url, "sa", "");
              var statement = connection.createStatement()) {
-            try (var row = statement.executeQuery("SELECT * FROM administradores_autorizados WHERE firebase_uid='existing'")) {
+            try (var row = statement.executeQuery("SELECT * FROM administradores_autorizados WHERE email='existing@example.com'")) {
                 assertTrue(row.next());
                 assertEquals(1L, row.getLong("id"));
+                assertNull(row.getString("supabase_uid"));
                 assertEquals("CLIENTE", row.getString("rol"));
                 assertEquals("ADMIN", row.getString("rol_autorizado"));
                 assertFalse(row.getBoolean("activo"));
@@ -32,7 +33,7 @@ class UnifiedAccountsMigrationTest {
             }
             try (var row = statement.executeQuery("SELECT * FROM administradores_autorizados WHERE autorizacion_email='pending@example.com'")) {
                 assertTrue(row.next());
-                assertNull(row.getString("firebase_uid"));
+                assertNull(row.getString("supabase_uid"));
                 assertEquals("INGENIERO", row.getString("rol_autorizado"));
                 assertFalse(row.getBoolean("autorizacion_activa"));
             }

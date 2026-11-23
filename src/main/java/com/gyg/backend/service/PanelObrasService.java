@@ -57,7 +57,7 @@ public class PanelObrasService {
     public List<ClienteObraResponse> listarClientes(Usuario actor) {
         requireAdmin(actor);
         return usuarioRepository.findAllByRolAndActivoTrueOrderByNombreAsc(Rol.CLIENTE).stream()
-                .filter(PanelObrasService::hasFirebaseAccount)
+                .filter(PanelObrasService::hasSupabaseAccount)
                 .map(cliente -> new ClienteObraResponse(
                         cliente.getId(),
                         clientDisplayName(cliente),
@@ -83,10 +83,10 @@ public class PanelObrasService {
             obra.setCliente(requireClientName(request.getCliente()));
         }
         if (actor.getRol() == Rol.INGENIERO) {
-            if (actor.getId() == null || !hasFirebaseAccount(actor)) {
+            if (actor.getId() == null || !hasSupabaseAccount(actor)) {
                 throw new AccessDeniedException("Se requiere una cuenta de ingeniero vinculada.");
             }
-            obra.getAsignaciones().add(new AsignacionObra(actor.getId(), actor.getFirebaseUid(), LocalDateTime.now()));
+            obra.getAsignaciones().add(new AsignacionObra(actor.getId(), actor.getSupabaseUid(), LocalDateTime.now()));
         }
         applyRequest(obra, request);
         TrackingCodeService.GeneratedTrackingCode generatedCode = trackingCodeService.generate();
@@ -226,13 +226,13 @@ public class PanelObrasService {
         Obra obra = loadForUpdate(obraId);
         Usuario ingeniero = usuarioRepository.findByIdForUpdate(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el ingeniero solicitado."));
-        if (!ingeniero.isActivo() || ingeniero.getRol() != Rol.INGENIERO || !hasFirebaseAccount(ingeniero)) {
+        if (!ingeniero.isActivo() || ingeniero.getRol() != Rol.INGENIERO || !hasSupabaseAccount(ingeniero)) {
             throw new ConflictException("Solo se pueden asignar ingenieros activos.");
         }
         if (obra.estaAsignadaA(usuarioId)) {
             throw new ConflictException("El ingeniero ya está asignado a esta obra.");
         }
-        obra.getAsignaciones().add(new AsignacionObra(ingeniero.getId(), actor.getFirebaseUid(), LocalDateTime.now()));
+        obra.getAsignaciones().add(new AsignacionObra(ingeniero.getId(), actor.getSupabaseUid(), LocalDateTime.now()));
         audit(actor, "INGENIERO_ASIGNADO", obra.getId(), ip);
         return toResponse(obra);
     }
@@ -264,7 +264,7 @@ public class PanelObrasService {
         return usuarioRepository.findById(clientId)
                 .filter(Usuario::isActivo)
                 .filter(usuario -> usuario.getRol() == Rol.CLIENTE)
-                .filter(PanelObrasService::hasFirebaseAccount)
+                .filter(PanelObrasService::hasSupabaseAccount)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el cliente solicitado."));
     }
 
@@ -273,8 +273,8 @@ public class PanelObrasService {
         obra.setCliente(clientDisplayName(client));
     }
 
-    private static boolean hasFirebaseAccount(Usuario usuario) {
-        return usuario.getFirebaseUid() != null && !usuario.getFirebaseUid().isBlank();
+    private static boolean hasSupabaseAccount(Usuario usuario) {
+        return usuario.getSupabaseUid() != null && !usuario.getSupabaseUid().isBlank();
     }
 
     private static String requireClientName(String value) {
@@ -354,7 +354,7 @@ public class PanelObrasService {
     }
 
     private void audit(Usuario actor, String action, Long obraId, String ip) {
-        auditRepository.save(new AuditoriaEvento(actor.getFirebaseUid(), action, obraId, ip));
+        auditRepository.save(new AuditoriaEvento(actor.getSupabaseUid(), action, obraId, ip));
     }
 
     private void validateProgress(Integer progress) {
@@ -414,7 +414,7 @@ public class PanelObrasService {
         nombre = nombre.replace('\\', '/');
         nombre = nombre.substring(nombre.lastIndexOf('/') + 1);
         FotoObraGuardada foto = new FotoObraGuardada(fotoId, nombre.substring(0, Math.min(nombre.length(), 200)),
-                LocalDate.now(), trimToNull(descripcion), actor.getFirebaseUid());
+                LocalDate.now(), trimToNull(descripcion), actor.getSupabaseUid());
         obra.getFotos().add(foto);
         contenido.guardar(fotoId, base64);
         audit(actor, "FOTO_OBRA_SUBIDA", obraId, ip);

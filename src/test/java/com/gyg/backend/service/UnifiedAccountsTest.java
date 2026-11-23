@@ -33,7 +33,7 @@ class UnifiedAccountsTest {
         assertEquals(authorization.getId(), result.getId());
         assertEquals(Rol.ADMIN, result.getRol());
         assertEquals(before, users.count());
-        assertEquals("verified-pending", users.findById(result.getId()).orElseThrow().getFirebaseUid());
+        assertEquals("verified-pending", users.findById(result.getId()).orElseThrow().getSupabaseUid());
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables "
                 + "WHERE LOWER(table_name) = 'usuarios'", Integer.class));
     }
@@ -42,9 +42,9 @@ class UnifiedAccountsTest {
     void unverifiedTokenCannotClaimOrPromotePendingAccount() {
         AdministradorAutorizado authorization = authorize("unverified@example.com");
         Usuario result = service.obtenerOCrear("unverified-uid", "unverified@example.com", false, Map.of());
-        assertEquals(Rol.USUARIO, result.getRol());
-        assertNull(users.findById(authorization.getId()).orElseThrow().getFirebaseUid());
-        assertTrue(users.findByFirebaseUid("unverified-uid").isEmpty());
+        assertNull(result.getRol());
+        assertNull(users.findById(authorization.getId()).orElseThrow().getSupabaseUid());
+        assertTrue(users.findBySupabaseUid("unverified-uid").isEmpty());
     }
 
     @Test
@@ -55,14 +55,14 @@ class UnifiedAccountsTest {
         users.flush();
         Usuario result = service.obtenerOCrear("revoked-uid", "revoked@example.com", true, Map.of());
         assertEquals(user.getId(), result.getId());
-        assertEquals(Rol.USUARIO, result.getRol());
+        assertNull(result.getRol());
         assertTrue(authorizations.findByEmail("revoked@example.com").isEmpty());
     }
 
     @Test
     void authorizingExistingUserKeepsTheirIdAndDisabledState() {
         Usuario user = new Usuario();
-        user.setFirebaseUid("disabled-uid");
+        user.setSupabaseUid("disabled-uid");
         user.setEmail("disabled@example.com");
         user.setActivo(false);
         users.saveAndFlush(user);

@@ -20,7 +20,7 @@ import static org.mockito.Mockito.*;
 class CustomEmailServiceTest {
 
     @Test
-    void shouldSendResponsiveHtmlWithEscapedContentAndFirebaseLink() throws Exception {
+    void shouldSendResponsiveHtmlWithEscapedContentAndRecoveryLink() throws Exception {
         JavaMailSender sender = mock(JavaMailSender.class);
         when(sender.createMimeMessage())
                 .thenReturn(new MimeMessage(Session.getInstance(new Properties())));
@@ -30,7 +30,7 @@ class CustomEmailServiceTest {
         service.sendPasswordReset(
                 "owner@example.com",
                 "\"><img src=x onerror=alert(1)>",
-                "https://example.firebaseapp.com/__/auth/action?mode=reset&continueUrl=https%3A%2F%2Fapp.example.com");
+                "https://app.example.com/?mode=reset&continueUrl=https%3A%2F%2Fapp.example.com");
 
         var messageCaptor = org.mockito.ArgumentCaptor.forClass(MimeMessage.class);
         verify(sender).send(messageCaptor.capture());
@@ -39,7 +39,7 @@ class CustomEmailServiceTest {
         assertTrue(message.getSubject().contains("Restablece tu contraseña"));
         String html = findHtml(message);
         assertTrue(html.contains("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"), html);
-        assertTrue(html.contains("href=\"https://example.firebaseapp.com/__/auth/action?mode=reset&amp;"));
+        assertTrue(html.contains("href=\"https://app.example.com/?mode=reset&amp;"));
         assertTrue(html.contains("background:#102a43"));
         assertTrue(html.contains("background:#ed7d20"));
     }

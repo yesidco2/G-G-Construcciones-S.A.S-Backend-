@@ -82,7 +82,7 @@ public class AdministracionService {
 
         autorizadoRepository.delete(autorizado);
         if (usuario != null) {
-            usuario.setRol(Rol.USUARIO);
+            if (usuario.getRol() != Rol.CLIENTE) usuario.setRol(null);
             usuarioRepository.save(usuario);
         }
     }
@@ -148,7 +148,7 @@ public class AdministracionService {
             Rol nuevoRol,
             Usuario actor,
             AdministradorAutorizado autorizacion) {
-        if (nuevoRol == Rol.USUARIO || nuevoRol == Rol.CLIENTE) {
+        if (nuevoRol == Rol.CLIENTE) {
             if (autorizacion != null) {
                 autorizadoRepository.delete(autorizacion);
             }

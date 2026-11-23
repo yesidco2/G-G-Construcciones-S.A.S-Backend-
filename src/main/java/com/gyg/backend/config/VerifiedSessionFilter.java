@@ -43,7 +43,7 @@ public class VerifiedSessionFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
         boolean valid;
         try {
-            valid = verifiedSessionService.isValid(VerifiedSessionService.firebaseToken(request));
+            valid = verifiedSessionService.isValid(VerifiedSessionService.identity(request));
         } catch (SecurityStateUnavailableException exception) {
             response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);

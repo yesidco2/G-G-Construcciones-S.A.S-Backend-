@@ -1,7 +1,7 @@
 package com.gyg.backend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.firebase.auth.FirebaseAuth;
+import com.gyg.backend.service.SupabaseAuth;
 import com.gyg.backend.dto.ChatRequest;
 import com.gyg.backend.dto.ContactoRequest;
 import com.gyg.backend.repository.NewsletterRepository;
@@ -55,7 +55,7 @@ class GygControllerIntegrationTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private FirebaseAuth firebaseAuth;
+    private SupabaseAuth supabaseAuth;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -326,7 +326,7 @@ class GygControllerIntegrationTest {
     void shouldReturnSecurelyGeneratedProjectTrackingAndNotFoundForUnknownCode() throws Exception {
         TrackingCodeService.GeneratedTrackingCode generated = trackingCodeService.generate();
         var cliente = new Usuario();
-        cliente.setFirebaseUid(UUID.randomUUID().toString());
+        cliente.setSupabaseUid(UUID.randomUUID().toString());
         cliente.setRol(Rol.CLIENTE);
         cliente = usuarioRepository.saveAndFlush(cliente);
         Obra obra = new Obra("Viaducto Metropolitano", "EN_PROGRESO", cliente.getId(), 74);
@@ -371,13 +371,13 @@ class GygControllerIntegrationTest {
     @Test
     void storesNewWorkAndPhotoAndServesItOnlyWithAuthorizationOrTrackingCode() throws Exception {
         Usuario cliente = new Usuario();
-        cliente.setFirebaseUid(UUID.randomUUID().toString());
+        cliente.setSupabaseUid(UUID.randomUUID().toString());
         cliente.setRol(Rol.CLIENTE);
         cliente.setEmail("obra-photo@example.com");
         cliente = usuarioRepository.saveAndFlush(cliente);
 
         Usuario admin = new Usuario();
-        admin.setFirebaseUid("test-obras-admin");
+        admin.setSupabaseUid("test-obras-admin");
         admin.setRol(Rol.ADMIN);
         var principal = authentication(new UsernamePasswordAuthenticationToken(
                 admin, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
@@ -420,7 +420,7 @@ class GygControllerIntegrationTest {
     @Test
     void engineerCanCreateAndManageWorkForAClientWithoutAccount() throws Exception {
         Usuario engineer = new Usuario();
-        engineer.setFirebaseUid(UUID.randomUUID().toString());
+        engineer.setSupabaseUid(UUID.randomUUID().toString());
         engineer.setRol(Rol.INGENIERO);
         engineer = usuarioRepository.saveAndFlush(engineer);
         var principal = authentication(new UsernamePasswordAuthenticationToken(

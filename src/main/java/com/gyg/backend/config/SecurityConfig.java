@@ -1,11 +1,10 @@
 package com.gyg.backend.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.firebase.auth.FirebaseAuth;
+import com.gyg.backend.service.SupabaseAuth;
 import com.gyg.backend.service.VerifiedSessionService;
 import com.gyg.backend.service.UsuarioService;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
@@ -38,14 +37,14 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            ObjectProvider<FirebaseAuth> firebaseAuthProvider,
+            SupabaseAuth supabaseAuth,
             UsuarioService usuarioService,
             VerifiedSessionService verifiedSessionService,
             ObjectMapper objectMapper,
             @Value("${app.captcha.enabled:true}") boolean captchaEnabled,
             @Value("${app.swagger.public:false}") boolean swaggerPublic) throws Exception {
-        FirebaseTokenFilter firebaseTokenFilter =
-                new FirebaseTokenFilter(firebaseAuthProvider.getIfAvailable(), usuarioService);
+        SupabaseTokenFilter supabaseTokenFilter =
+                new SupabaseTokenFilter(supabaseAuth, usuarioService);
         VerifiedSessionFilter verifiedSessionFilter =
                 new VerifiedSessionFilter(verifiedSessionService, objectMapper, captchaEnabled);
 
@@ -104,8 +103,8 @@ public class SecurityConfig {
                             .permitAll()
                             .anyRequest().authenticated();
                 })
-                .addFilterBefore(firebaseTokenFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(verifiedSessionFilter, FirebaseTokenFilter.class)
+                .addFilterBefore(supabaseTokenFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(verifiedSessionFilter, SupabaseTokenFilter.class)
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable());
 

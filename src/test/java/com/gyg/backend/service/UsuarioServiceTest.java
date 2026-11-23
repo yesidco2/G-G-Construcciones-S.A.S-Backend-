@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -34,10 +35,10 @@ class UsuarioServiceTest {
     void setUp() {
         usuarioService = new UsuarioService(usuarioRepository, autorizadoRepository);
         usuario = new Usuario();
-        usuario.setFirebaseUid("firebase-uid");
+        usuario.setSupabaseUid("supabase-uid");
         usuario.setEmail("admin@example.com");
 
-        when(usuarioRepository.findByFirebaseUid("firebase-uid")).thenReturn(Optional.of(usuario));
+        when(usuarioRepository.findBySupabaseUid("supabase-uid")).thenReturn(Optional.of(usuario));
         lenient().when(usuarioRepository.save(any(Usuario.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -48,7 +49,7 @@ class UsuarioServiceTest {
         when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(autorizado));
 
         Usuario result = usuarioService.obtenerOCrear(
-                "firebase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
+                "supabase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
 
         assertEquals(Rol.ADMIN, result.getRol());
         assertEquals("admin@example.com", result.getEmail());
@@ -58,9 +59,9 @@ class UsuarioServiceTest {
     @Test
     void leavesUnverifiedAuthorizedEmailAsRegularUser() {
         Usuario result = usuarioService.obtenerOCrear(
-                "firebase-uid", "Admin@Example.com", false, Map.of("name", "Admin"));
+                "supabase-uid", "Admin@Example.com", false, Map.of("name", "Admin"));
 
-        assertEquals(Rol.USUARIO, result.getRol());
+        assertNull(result.getRol());
         assertEquals(false, result.isEmailVerificado());
         verify(autorizadoRepository, never()).findByEmail(any());
     }
@@ -70,9 +71,9 @@ class UsuarioServiceTest {
         when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
 
         Usuario result = usuarioService.obtenerOCrear(
-                "firebase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
+                "supabase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
 
-        assertEquals(Rol.USUARIO, result.getRol());
+        assertNull(result.getRol());
         assertEquals(true, result.isEmailVerificado());
     }
 
@@ -82,7 +83,7 @@ class UsuarioServiceTest {
         when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.of(autorizado));
 
         Usuario result = usuarioService.obtenerOCrear(
-                "firebase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
+                "supabase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
 
         assertEquals(Rol.INGENIERO, result.getRol());
     }
@@ -93,7 +94,7 @@ class UsuarioServiceTest {
         when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
 
         Usuario result = usuarioService.obtenerOCrear(
-                "firebase-uid", "Admin@Example.com", true, Map.of("name", "Cliente"));
+                "supabase-uid", "Admin@Example.com", true, Map.of("name", "Cliente"));
 
         assertEquals(Rol.CLIENTE, result.getRol());
     }
@@ -103,9 +104,9 @@ class UsuarioServiceTest {
         when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
 
         Usuario result = usuarioService.obtenerOCrear(
-                "firebase-uid", "Admin@Example.com", true, Map.of("role", "CLIENTE"));
+                "supabase-uid", "Admin@Example.com", true, Map.of("role", "CLIENTE"));
 
-        assertEquals(Rol.USUARIO, result.getRol());
+        assertNull(result.getRol());
     }
 
     @Test
@@ -113,11 +114,11 @@ class UsuarioServiceTest {
         usuario.setEmail("admin@example.com");
         usuario.setNombre("Admin");
         usuario.setEmailVerificado(true);
-        usuario.setRol(Rol.USUARIO);
+        usuario.setRol(null);
         when(autorizadoRepository.findByEmail("admin@example.com")).thenReturn(Optional.empty());
 
         usuarioService.obtenerOCrear(
-                "firebase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
+                "supabase-uid", "Admin@Example.com", true, Map.of("name", "Admin"));
 
         verify(usuarioRepository, never()).save(any(Usuario.class));
     }

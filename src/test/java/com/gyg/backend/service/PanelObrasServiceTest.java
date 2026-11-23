@@ -73,7 +73,7 @@ class PanelObrasServiceTest {
 
     @Test
     void shouldForbidRegularUserFromOperatingPanel() {
-        Usuario regularUser = user(Rol.USUARIO, "user-uid");
+        Usuario regularUser = user(null, "user-uid");
         Obra obra = obra(10L);
         when(obraRepository.findByIdAndEliminadaEnIsNull(10L)).thenReturn(Optional.of(obra));
 
@@ -149,7 +149,7 @@ class PanelObrasServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> service.crear(
                 obraRequest(999L), user(Rol.ADMIN, "admin-uid"), "127.0.0.1"));
 
-        Usuario regularUser = user(Rol.USUARIO, "user-uid");
+        Usuario regularUser = user(null, "user-uid");
         regularUser.setId(5L);
         when(usuarioRepository.findById(5L)).thenReturn(Optional.of(regularUser));
         assertThrows(ResourceNotFoundException.class, () -> service.crear(
@@ -239,7 +239,7 @@ class PanelObrasServiceTest {
 
     private Usuario user(Rol role, String uid) {
         Usuario user = new Usuario();
-        user.setFirebaseUid(uid);
+        user.setSupabaseUid(uid);
         user.setRol(role);
         user.setActivo(true);
         return user;

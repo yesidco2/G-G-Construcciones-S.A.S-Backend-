@@ -42,7 +42,7 @@ class AdministracionServiceTest {
         UsuarioRepository users = mock(UsuarioRepository.class);
         AdministradorAutorizadoRepository authorizations = mock(AdministradorAutorizadoRepository.class);
         AdministracionService service = new AdministracionService(authorizations, users);
-        Usuario target = user(1L, "client@example.com", Rol.USUARIO);
+        Usuario target = user(1L, "client@example.com", null);
         Usuario actor = user(2L, "admin@example.com", Rol.ADMIN);
         when(users.findByIdForUpdate(1L)).thenReturn(Optional.of(target));
         when(users.countByRolAndActivoTrue(Rol.ADMIN)).thenReturn(1L);

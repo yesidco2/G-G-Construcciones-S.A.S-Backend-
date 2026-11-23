@@ -12,8 +12,8 @@ public class Usuario {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "firebase_uid", unique = true)
-    private String firebaseUid;
+    @Column(name = "supabase_uid", unique = true)
+    private String supabaseUid;
 
     @Column(name = "email")
     private String email;
@@ -22,8 +22,8 @@ public class Usuario {
     private String nombre;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "rol", nullable = false)
-    private Rol rol = Rol.USUARIO;
+    @Column(name = "rol")
+    private Rol rol;
 
     @Column(name = "activo", nullable = false)
     private boolean activo = true;
@@ -68,12 +68,12 @@ public class Usuario {
         this.id = id;
     }
 
-    public String getFirebaseUid() {
-        return firebaseUid;
+    public String getSupabaseUid() {
+        return supabaseUid;
     }
 
-    public void setFirebaseUid(String firebaseUid) {
-        this.firebaseUid = firebaseUid;
+    public void setSupabaseUid(String supabaseUid) {
+        this.supabaseUid = supabaseUid;
     }
 
     public String getEmail() {
