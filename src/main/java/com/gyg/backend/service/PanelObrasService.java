@@ -327,6 +327,11 @@ public class PanelObrasService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la obra solicitada."));
     }
 
+    @Transactional(readOnly = true)
+    public void verificarAcceso(Long obraId, Usuario actor) {
+        requireCanOperate(loadActive(obraId), actor);
+    }
+
     private Obra loadForUpdate(Long obraId) {
         return obraRepository.findActiveByIdForUpdate(obraId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la obra solicitada."));

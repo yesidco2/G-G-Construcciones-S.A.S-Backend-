@@ -22,14 +22,18 @@ public class ObraImageService {
     private static final long MAX_IMAGE_PIXELS = 4_000_000L;
 
     public byte[] sanitize(MultipartFile file) {
+        return sanitize(file, MAX_IMAGE_PIXELS);
+    }
+
+    byte[] sanitize(MultipartFile file, long maxImagePixels) {
         try {
-            return encodePng(file);
+            return encodePng(file, maxImagePixels);
         } catch (IOException exception) {
             throw new IllegalArgumentException("No se pudo leer o procesar la imagen.", exception);
         }
     }
 
-    private byte[] encodePng(MultipartFile file) throws IOException {
+    private byte[] encodePng(MultipartFile file, long maxImagePixels) throws IOException {
         if (file == null || file.isEmpty() || file.getSize() > MAX_FILE_BYTES) {
             throw new IllegalArgumentException("La imagen debe tener contenido y no superar 5 MB.");
         }
@@ -51,7 +55,7 @@ public class ObraImageService {
         if (!declaredFormat.equals(detectFormat(source))) {
             throw new IllegalArgumentException("El tipo MIME no coincide con el contenido de la imagen.");
         }
-        BufferedImage decoded = decodeImage(source);
+        BufferedImage decoded = decodeImage(source, maxImagePixels);
         BufferedImage cleanImage = new BufferedImage(
                 decoded.getWidth(), decoded.getHeight(), BufferedImage.TYPE_INT_ARGB);
         Graphics2D graphics = cleanImage.createGraphics();
@@ -74,7 +78,7 @@ public class ObraImageService {
         return output.toByteArray();
     }
 
-    private BufferedImage decodeImage(byte[] bytes) throws IOException {
+    private BufferedImage decodeImage(byte[] bytes, long maxImagePixels) throws IOException {
         try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
             if (input == null) {
                 throw new IllegalArgumentException("El archivo no contiene una imagen compatible.");
@@ -88,7 +92,7 @@ public class ObraImageService {
                 reader.setInput(input, true, true);
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
-                if (width <= 0 || height <= 0 || (long) width * height > MAX_IMAGE_PIXELS) {
+                if (width <= 0 || height <= 0 || (long) width * height > maxImagePixels) {
                     throw new IllegalArgumentException("Las dimensiones de la imagen no son válidas.");
                 }
                 BufferedImage decoded = reader.read(0);
