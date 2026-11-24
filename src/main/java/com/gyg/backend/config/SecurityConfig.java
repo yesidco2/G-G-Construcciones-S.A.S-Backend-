@@ -75,7 +75,7 @@ public class SecurityConfig {
                                         "Acceso denegado", "No tienes permisos para acceder a este recurso.")))
                 .authorizeHttpRequests(authorize -> {
                     authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                            .requestMatchers("/error").permitAll();
+                            .requestMatchers("/error", "/api/inducciones/**").permitAll();
                     if (swaggerPublic) {
                         authorize.requestMatchers(
                                 "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
@@ -131,7 +131,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Captcha-Token"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Captcha-Token", "X-Induccion-Token", "X-Induccion-Token"));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(Duration.ofSeconds(3600));
 
