@@ -233,3 +233,14 @@ React registra la obra con `POST /api/panel/obras`. El JSON usa `nombre`, `clien
 - Envía cada foto con `POST /api/panel/obras/{id}/fotos` mediante `multipart/form-data`. Usa el campo `archivo` y, opcionalmente, `descripcion`. Se admiten JPEG, PNG y WebP, hasta 5 MB y 4 megapíxeles. Cada obra admite hasta 20 fotos y el servidor las guarda como PNG.
 - Lista las fotos del panel con `GET /api/panel/obras/{id}/fotos` o lee `fotos` en la respuesta de la obra. Cada elemento incluye `id`, `nombre`, `url`, `fecha` y `descripcion`. Descarga con `GET /api/panel/obras/{id}/fotos/{fotoId}` y elimina con `DELETE` en esa misma ruta.
 - El seguimiento público descarga con `POST /api/obras/seguimiento/fotos/{fotoId}`, mandando `{"codigo":"..."}` en JSON. Usa la respuesta PNG como Blob para mostrarla en la interfaz.
+
+### Tarifario del cotizador público
+
+Flyway V23 crea el catálogo con los doce servicios publicados en el portal. Para revisar la migración en local, apunta el backend a una base de desarrollo. Flyway la ejecuta al arrancar.
+
+- En `apoyo.cotizador_servicios`, confirma la unidad comercial de cada servicio. La unidad inicial para solicitar una valoración es «servicio completo».
+- En `apoyo.cotizador_tarifas`, registra el importe unitario en COP, la unidad exacta del servicio, el tipo (`APROBADA` o `REFERENCIA`), la fuente autorizada, su fecha, el municipio, el alcance y el periodo de aplicación. Activa la fila al aprobar su publicación. Usa `*` para cobertura nacional solo cuando la fuente la autorice. Las referencias requieren fecha de fin.
+- En `apoyo.cotizador_condiciones`, configura las condiciones vigentes por municipio y periodo. Los campos opcionales admiten valores nulos. El descuento se calcula sobre los servicios valorados y el impuesto se calcula después del descuento y del desplazamiento.
+- Las propiedades `app.cotizador.empresa.nit` y `app.cotizador.empresa.direccion` permiten completar el membrete con los datos confirmados de G&G.
+
+El backend consulta el tarifario al preparar la vista previa y al descargar el PDF. Si cambia la valoración, solicita una nueva vista previa. Los datos del cliente se usan para generar el documento en memoria.

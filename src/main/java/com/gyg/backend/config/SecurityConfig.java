@@ -92,6 +92,7 @@ public class SecurityConfig {
                             .permitAll()
                             .requestMatchers("/api/auth/**").authenticated()
                             .requestMatchers(HttpMethod.POST, "/api/obras/seguimiento/**").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/api/cotizaciones/vista-previa", "/api/cotizaciones/pdf").permitAll()
                     .requestMatchers("/api/panel/obras/clientes").hasRole("ADMIN")
                     .requestMatchers("/api/panel/**").hasAnyRole("ADMIN", "INGENIERO")
                     .requestMatchers("/api/admin/consultas-chat").hasRole("ADMIN")
@@ -131,7 +132,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Captcha-Token", "X-Induccion-Token", "X-Induccion-Token"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "If-Match", "X-Captcha-Token", "X-Induccion-Token"));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(Duration.ofSeconds(3600));
 
