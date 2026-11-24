@@ -40,6 +40,7 @@ El backend sirve de API REST para un frontend desarrollado en React.
    - `APP_MAX_REQUEST_BODY_SIZE`: tamaño máximo de los cuerpos HTTP (`1MB` por defecto).
    - `APP_RATE_LIMIT_NEWSLETTER_PER_HOUR`: máximo de suscripciones al newsletter por IP por hora (5 por defecto).
    - `APP_PRIVACY_POLICY_VERSION`, `APP_CHAT_LOG_RETENTION_MONTHS` y `APP_CHAT_LOG_RETENTION_CRON`: versión de consentimiento y política de retención de consultas del chat.
+   - `APP_CHAT_GEMINI_ENABLED` (apagado por defecto), `GEMINI_API_KEY` y `APP_CHAT_GEMINI_MODEL`: habilitan Gemini. La clave solo se configura como secreto del backend; nunca en el frontend. El modelo predeterminado es `gemini-3.6-flash`.
    - `SPRING_PROFILES_ACTIVE=dev` solo para desarrollo local; añade orígenes localhost y carga datos demostrativos.
 
    Para producción en GitHub Pages, agrega el origen del sitio, por ejemplo `https://<usuario>.github.io`, a `APP_CORS_ALLOWED_ORIGINS`.

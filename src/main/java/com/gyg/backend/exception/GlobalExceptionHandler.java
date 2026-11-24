@@ -17,6 +17,8 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import com.gyg.backend.service.ChatConsentRequiredException;
+import com.gyg.backend.service.ChatProviderUnavailableException;
 import com.gyg.backend.service.CaptchaFailureCode;
 import com.gyg.backend.service.CaptchaVerificationException;
 import com.gyg.backend.service.EmailDeliveryException;
@@ -132,6 +134,24 @@ public class GlobalExceptionHandler {
                 "No fue posible verificar la sesión. Intenta nuevamente más tarde.",
                 "AUTH_SESSION_UNAVAILABLE",
                 request);
+    }
+
+    @ExceptionHandler(ChatConsentRequiredException.class)
+    public ResponseEntity<Map<String, Object>> handleChatConsentRequired(
+            ChatConsentRequiredException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.BAD_REQUEST, "Bad Request",
+                "Debes aceptar el envío de tu pregunta al proveedor de IA para continuar.", request);
+    }
+
+    @ExceptionHandler(ChatProviderUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleChatProviderUnavailable(
+            ChatProviderUnavailableException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+                "No fue posible generar una respuesta con el asistente. Intenta nuevamente más tarde.", request);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

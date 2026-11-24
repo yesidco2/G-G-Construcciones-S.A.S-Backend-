@@ -1,10 +1,12 @@
 package com.gyg.backend.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.util.Locale;
 
 @Service
+@ConditionalOnProperty(name = "app.chat.gemini.enabled", havingValue = "false", matchIfMissing = true)
 public class KeywordChatEngine implements ChatEngine {
 
     @Override

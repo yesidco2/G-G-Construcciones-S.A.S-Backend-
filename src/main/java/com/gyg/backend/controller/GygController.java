@@ -66,6 +66,14 @@ public class GygController {
     @Value("${app.rate-limit.seguimiento-failed-per-15-min:5}")
     private int seguimientoFailedPer15Min;
 
+    @Value("${app.chat.gemini.enabled:false}")
+    private boolean geminiEnabled;
+
+    @GetMapping("/chat/config")
+    public ResponseEntity<ChatConfigDTO> getChatConfig() {
+        return ResponseEntity.ok(new ChatConfigDTO(geminiEnabled));
+    }
+
     @GetMapping("/institucional")
     @Operation(summary = "Obtener mision, vision y valores de la empresa")
     public ResponseEntity<InstitucionalDTO> getInstitucional() {
@@ -150,7 +158,7 @@ public class GygController {
     }
 
     @PostMapping("/chat")
-    @Operation(summary = "Generar una respuesta automatizada basada en palabras clave de normativas SST")
+    @Operation(summary = "Responder una consulta de SST usando el motor configurado")
     public ResponseEntity<ChatResponse> responderChat(
             @Valid @RequestBody ChatRequest request,
             HttpServletRequest httpRequest) {

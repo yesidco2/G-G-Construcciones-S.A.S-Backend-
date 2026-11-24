@@ -83,5 +83,8 @@ CREATE TABLE logs_chat (
     session_id VARCHAR(255) NOT NULL,
     pregunta VARCHAR(2000) NOT NULL,
     respuesta VARCHAR(4000) NOT NULL,
-    fecha TIMESTAMP WITHOUT TIME ZONE NOT NULL
+    fecha TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    acepta_envio_proveedor BOOLEAN NOT NULL DEFAULT FALSE,
+    version_politica VARCHAR(50),
+    fecha_consentimiento TIMESTAMP WITHOUT TIME ZONE
 );
