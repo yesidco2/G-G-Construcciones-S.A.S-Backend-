@@ -54,6 +54,10 @@ public class GygService {
     @Value("${app.privacy.policy-version:2026-01}")
     private String policyVersion;
 
+    @Value("${app.chat.gemini.enabled:false}")
+    private boolean geminiEnabled;
+
+
     @Value("${app.tracking-code.legacy-enabled:true}")
     private boolean legacyTrackingCodesEnabled;
 
@@ -137,21 +141,41 @@ public class GygService {
     }
 
     // 5. POST /api/chat
-    @Transactional
+    @Transactional(noRollbackFor = ChatProviderUnavailableException.class)
     public ChatResponse responderChat(ChatRequest request) {
         if (request == null || request.getPregunta() == null || request.getPregunta().trim().isEmpty()) {
             throw new IllegalArgumentException("La pregunta es requerida");
         }
 
         String pregunta = request.getPregunta().trim();
-        String respuesta = chatEngine.responder(pregunta);
+        if (geminiEnabled && !Boolean.TRUE.equals(request.getAceptaEnvioProveedor())) {
+            throw new ChatConsentRequiredException();
+        }
+
         LocalDateTime timestamp = LocalDateTime.now();
 
         LogChat logChat = new LogChat();
         logChat.setSessionId(UUID.randomUUID().toString());
         logChat.setPregunta(pregunta);
-        logChat.setRespuesta(respuesta);
         logChat.setFecha(timestamp);
+        boolean aceptaEnvioProveedor = geminiEnabled
+                && Boolean.TRUE.equals(request.getAceptaEnvioProveedor());
+        logChat.setAceptaEnvioProveedor(aceptaEnvioProveedor);
+        if (aceptaEnvioProveedor) {
+            logChat.setVersionPolitica(policyVersion);
+            logChat.setFechaConsentimiento(timestamp);
+        }
+
+        String respuesta;
+        try {
+            respuesta = chatEngine.responder(pregunta);
+        } catch (ChatProviderUnavailableException exception) {
+            logChat.setRespuesta("No fue posible generar una respuesta con el asistente.");
+            logChatRepository.save(logChat);
+            throw exception;
+        }
+
+        logChat.setRespuesta(respuesta);
         logChatRepository.save(logChat);
 
         return new ChatResponse(pregunta, respuesta, timestamp);
