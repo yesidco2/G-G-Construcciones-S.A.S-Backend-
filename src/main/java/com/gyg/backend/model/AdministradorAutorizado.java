@@ -1,53 +1,28 @@
 package com.gyg.backend.model;
 
-import jakarta.persistence.*;
-
 import java.time.LocalDateTime;
-import java.util.Locale;
 
-@Entity
-@Table(name = "administradores_autorizados")
 public class AdministradorAutorizado {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "email", nullable = false, unique = true)
     private String email;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "rol", nullable = false)
     private Rol rol = Rol.INGENIERO;
 
-    @Column(name = "activo", nullable = false)
     private boolean activo = true;
 
-    @Column(name = "creado_por")
     private String creadoPor;
 
-    @Column(name = "creado_en", nullable = false, updatable = false)
     private LocalDateTime creadoEn;
-
-    @PrePersist
-    @PreUpdate
-    void prepararPersistencia() {
-        if (email != null) {
-            email = email.trim().toLowerCase(Locale.ROOT);
-        }
-        if (rol == null) {
-            rol = Rol.INGENIERO;
-        } else if (rol == Rol.USUARIO) {
-            throw new IllegalStateException("Una autorización debe tener rol INGENIERO o ADMIN.");
-        }
-        if (creadoEn == null) {
-            creadoEn = LocalDateTime.now();
-        }
-    }
 
     public Long getId() {
         return id;
     }
+
+    public void setId(Long id) { this.id = id; }
+
+    public void setCreadoEn(LocalDateTime value) { this.creadoEn = value; }
 
     public String getEmail() {
         return email;

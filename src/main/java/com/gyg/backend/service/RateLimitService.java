@@ -3,22 +3,27 @@ package com.gyg.backend.service;
 import com.gyg.backend.exception.TooManyRequestsException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
+import java.util.HexFormat;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class RateLimitService {
 
-    private static final long MAX_CACHE_ENTRIES = 100_000;
+    private static final long CLEANUP_EVERY_REQUESTS = 512;
+    private static final long RETAIN_EXPIRED_MILLIS = Duration.ofDays(1).toMillis();
 
-    private final Cache<LimitKey, Window> windows = Caffeine.newBuilder()
-            .maximumSize(MAX_CACHE_ENTRIES)
-            .expireAfterAccess(1, TimeUnit.HOURS)
-            .build();
+    private final PersistentRateLimitStore store;
+    private final AtomicLong requestsSinceCleanup = new AtomicLong();
+
+    public RateLimitService(PersistentRateLimitStore store) {
+        this.store = store;
+    }
 
     public void check(
             String scope,
@@ -29,26 +34,25 @@ public class RateLimitService {
         Objects.requireNonNull(scope, "scope");
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(windowDuration, "windowDuration");
-        if (maxRequests < 1 || windowDuration.isZero() || windowDuration.isNegative()) {
-            throw new IllegalArgumentException("El limite y la duracion de la ventana deben ser positivos");
+        if (scope.isBlank() || scope.length() > 200
+                || maxRequests < 1 || windowDuration.isZero() || windowDuration.isNegative()) {
+            throw new IllegalArgumentException("El alcance, el límite y la duración deben ser válidos.");
         }
 
-        long now = System.nanoTime();
-        long durationNanos = windowDuration.toNanos();
-        LimitKey key = new LimitKey(scope, clientIp(request));
-        Window updated = windows.asMap().compute(key, (ignored, current) -> {
-            if (current == null || now - current.startedAtNanos() >= current.durationNanos()) {
-                return new Window(now, durationNanos, 1);
-            }
-            return new Window(current.startedAtNanos(), current.durationNanos(), current.requestCount() + 1);
-        });
+        long durationMillis = Math.max(1, windowDuration.toMillis());
+        String clientHash = hash(clientIp(request));
+        PersistentRateLimitStore.Window updated =
+                store.increment(scope, clientHash, durationMillis);
 
         if (updated.requestCount() > maxRequests) {
-            long remainingNanos = Math.max(
-                    0, updated.startedAtNanos() + updated.durationNanos() - now);
+            long remainingMillis = Math.max(0, updated.expiresAt() - updated.nowMillis());
             long retryAfterSeconds = Math.max(
-                    1, (remainingNanos + TimeUnit.SECONDS.toNanos(1) - 1) / TimeUnit.SECONDS.toNanos(1));
+                    1, remainingMillis / 1000 + (remainingMillis % 1000 == 0 ? 0 : 1));
             throw new TooManyRequestsException(message, retryAfterSeconds);
+        }
+
+        if (requestsSinceCleanup.incrementAndGet() % CLEANUP_EVERY_REQUESTS == 0) {
+            store.deleteExpiredBefore(RETAIN_EXPIRED_MILLIS);
         }
     }
 
@@ -57,9 +61,12 @@ public class RateLimitService {
         return remoteAddress == null || remoteAddress.isBlank() ? "unknown" : remoteAddress;
     }
 
-    private record LimitKey(String scope, String clientIp) {
-    }
-
-    private record Window(long startedAtNanos, long durationNanos, int requestCount) {
+    private static String hash(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("No se pudo calcular la huella de la dirección cliente.", exception);
+        }
     }
 }

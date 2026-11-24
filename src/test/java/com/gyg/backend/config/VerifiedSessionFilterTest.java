@@ -27,4 +27,19 @@ class VerifiedSessionFilterTest {
         assertTrue(response.getContentAsString().contains("\"code\":\"CAPTCHA_REQUIRED\""));
         verifyNoInteractions(chain);
     }
+
+    @Test
+    void shouldNotRequireCaptchaVerifiedSessionForEmailVerificationEndpoint() throws Exception {
+        VerifiedSessionService sessions = mock(VerifiedSessionService.class);
+        VerifiedSessionFilter filter = new VerifiedSessionFilter(sessions, new ObjectMapper(), true);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/api/auth/email-verification");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        verify(chain).doFilter(request, response);
+        verifyNoInteractions(sessions);
+    }
 }

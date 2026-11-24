@@ -1,0 +1,5 @@
+ALTER TABLE obras ADD COLUMN descripcion VARCHAR(2000);
+ALTER TABLE obras ADD COLUMN fecha_inicio DATE;
+ALTER TABLE obras ADD COLUMN fecha_fin_estimada DATE;
+ALTER TABLE obras ADD COLUMN codigo_legacy BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE foto_obra ADD COLUMN descripcion VARCHAR(1000);

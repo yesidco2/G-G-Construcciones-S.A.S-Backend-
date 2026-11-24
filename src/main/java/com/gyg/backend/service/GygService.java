@@ -19,7 +19,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -32,16 +31,10 @@ public class GygService {
     private static final String DUMMY_TRACKING_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 
     @Autowired
-    private ServicioRepository servicioRepository;
-
-    @Autowired
-    private LaborRepository laborRepository;
-
-    @Autowired
-    private PoliticaAmbientalRepository politicaAmbientalRepository;
-
-    @Autowired
     private ObraRepository obraRepository;
+
+    @Autowired
+    private FotosObraService fotosObraService;
 
     @Autowired
     private SolicitudContactoRepository solicitudContactoRepository;
@@ -56,10 +49,13 @@ public class GygService {
     private TrackingCodeService trackingCodeService;
 
     @Autowired
-    private ContactCooldownLockService contactCooldownLockService;
+    private EmailSubmissionLockService emailSubmissionLockService;
 
     @Value("${app.privacy.policy-version:2026-01}")
     private String policyVersion;
+
+    @Value("${app.tracking-code.legacy-enabled:true}")
+    private boolean legacyTrackingCodesEnabled;
 
     // 1. GET /api/institucional
     public InstitucionalDTO getInstitucional() {
@@ -70,13 +66,6 @@ public class GygService {
         );
     }
 
-    // 2. GET /api/servicios
-    public List<ServicioDTO> getServicios() {
-        return servicioRepository.findAll().stream()
-                .map(s -> new ServicioDTO(s.getId(), s.getTitulo(), s.getDescripcion(), s.getBloque()))
-                .collect(Collectors.toList());
-    }
-
     // 3. GET /api/datos-legales
     public DatosLegalesDTO getDatosLegales() {
         return new DatosLegalesDTO(
@@ -85,7 +74,6 @@ public class GygService {
         );
     }
 
-    // 4. POST /api/contacto
     @Transactional
     public void crearContacto(ContactoRequest request) {
         if (request == null) {
@@ -101,8 +89,8 @@ public class GygService {
         if (nombre == null || nombre.isEmpty()) {
             throw new IllegalArgumentException("El nombre es requerido");
         }
-        if (correo == null || correo.isEmpty()) {
-            throw new IllegalArgumentException("El correo es requerido");
+        if ((correo == null || correo.isEmpty()) && (telefono == null || telefono.isEmpty())) {
+            throw new IllegalArgumentException("Se requiere correo o teléfono");
         }
         if (mensaje == null || mensaje.isEmpty()) {
             throw new IllegalArgumentException("El mensaje es requerido");
@@ -115,15 +103,17 @@ public class GygService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        String normalizedEmail = correo.toLowerCase(Locale.ROOT);
-        contactCooldownLockService.lockByEmail(normalizedEmail);
-        LocalDateTime lastContact = solicitudContactoRepository
-                .findTopByCorreoOrderByFechaDesc(normalizedEmail)
-                .map(SolicitudContacto::getFecha)
-                .orElse(null);
-        if (lastContact != null && lastContact.plusMinutes(CONTACT_COOLDOWN_MINUTES).isAfter(now)) {
-            throw new TooManyRequestsException(
-                    "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos.");
+        String normalizedEmail = correo == null ? null : correo.toLowerCase(Locale.ROOT);
+        if (normalizedEmail != null) {
+            emailSubmissionLockService.lockByEmail(normalizedEmail);
+            LocalDateTime lastContact = solicitudContactoRepository
+                    .findTopByCorreoOrderByFechaDesc(normalizedEmail)
+                    .map(SolicitudContacto::getFecha)
+                    .orElse(null);
+            if (lastContact != null && lastContact.plusMinutes(CONTACT_COOLDOWN_MINUTES).isAfter(now)) {
+                throw new TooManyRequestsException(
+                        "Ya recibimos una solicitud con este correo. Intenta nuevamente en 30 minutos.");
+            }
         }
 
         String tipoServicio = request.getTipoServicio() == null || request.getTipoServicio().trim().isEmpty()
@@ -143,7 +133,6 @@ public class GygService {
         solicitud.setAceptaPolitica(true);
         solicitud.setVersionPolitica(policyVersion);
         solicitud.setFechaConsentimiento(now);
-
         solicitudContactoRepository.save(solicitud);
     }
 
@@ -168,84 +157,48 @@ public class GygService {
         return new ChatResponse(pregunta, respuesta, timestamp);
     }
 
-    // 6. GET /api/proyectos
-    public List<ProyectoDTO> getProyectos(String categoria) {
-        String categoriaFiltro = categoria == null ? null : categoria.trim().toUpperCase(Locale.ROOT);
-
-        return obraRepository.findAllByEliminadaEnIsNullOrderByIdDesc().stream()
-                .filter(obra -> categoriaFiltro == null || categoriaFiltro.equalsIgnoreCase(inferirCategoria(obra.getNombreObra())))
-                .map(obra -> new ProyectoDTO(
-                        obra.getId(),
-                        obra.getNombreObra(),
-                        obra.getCategoria() == null || obra.getCategoria().isBlank()
-                                ? inferirCategoria(obra.getNombreObra()) : obra.getCategoria(),
-                        construirDescripcion(obra.getNombreObra()),
-                        construirMetricaDestacada(obra.getNombreObra()),
-                        construirImagen(obra.getNombreObra())
-                ))
-                .collect(Collectors.toList());
-    }
-
     // 7. POST /api/obras/seguimiento
+    @Transactional
     public SeguimientoObraDTO getSeguimientoProyecto(String codigo) {
-        String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
-        String codeHash = trackingCodeService.hash(candidate);
-        Optional<Obra> found = obraRepository.findByCodigoHashWithFotosAndHitos(codeHash);
-        boolean codeMatches = trackingCodeService.matches(
-                candidate, found.map(Obra::getCodigoHash).orElse(DUMMY_TRACKING_HASH));
-        boolean validFormat = TRACKING_CODE_PATTERN.matcher(candidate).matches()
-                || LEGACY_TRACKING_CODE_PATTERN.matcher(candidate).matches();
-        if (found.isEmpty() || !validFormat || !codeMatches) {
-            throw new ResourceNotFoundException("No se encontró el proyecto solicitado.");
+        Obra obra = findTrackedWork(codigo);
+        if (obra.getCodigoCifrado() == null) {
+            obraRepository.storeRecoveredTrackingCode(obra.getId(), obra.getCodigoHash(),
+                    trackingCodeService.encrypt(codigo, obra.getCodigoHash()));
         }
-        Obra obra = found.get();
 
-        List<FotoObraDTO> fotosObra = obra.getFotos().stream()
-                .map(f -> new FotoObraDTO(f.getUrl(), f.getFecha()))
-                .collect(Collectors.toList());
         List<SeguimientoHitoDTO> hitos = obra.getHitos().stream()
                 .map(hito -> new SeguimientoHitoDTO(
-                        hito.getNombre(), hito.getDescripcion(),
-                        hito.getFechaObjetivo(), hito.isCompletado()))
+                          hito.nombre(), hito.descripcion(),
+                          hito.fechaObjetivo(), hito.completado()))
                 .toList();
 
         return new SeguimientoObraDTO(
-                obra.getNombreObra(), obra.getPorcentajeAvance(), hitos, fotosObra);
+                  obra.getNombreObra(), obra.getPorcentajeAvance(), hitos,
+                  obra.getFotos().stream().map(foto -> new FotoObraDTO(
+                          foto.id(), foto.nombre(), "/api/obras/seguimiento/fotos/" + foto.id(),
+                          foto.fecha(), foto.descripcion())).toList());
     }
 
-    // 8. GET /api/riesgos/labores
-    public List<LaborDTO> getLabores() {
-        return laborRepository.findAll().stream()
-                .map(l -> new LaborDTO(l.getId(), l.getNombre()))
-                .collect(Collectors.toList());
+    public byte[] getSeguimientoFoto(String codigo, Long fotoId) {
+        Obra obra = findTrackedWork(codigo);
+        obra.buscarFoto(fotoId);
+        return fotosObraService.obtener(obra.getId(), fotoId);
     }
 
-    // 9. GET /api/riesgos/{laborId}
-    public LaborDetalleDTO getLaborDetalle(Long laborId) {
-        Labor labor = laborRepository.findById(laborId)
-                .orElseThrow(() -> new ResourceNotFoundException("Labor no encontrada con ID: " + laborId));
-
-        List<RiesgoDTO> riesgosDTO = labor.getRiesgos().stream()
-                .map(r -> new RiesgoDTO(r.getId(), r.getDescripcion(), r.getNivelSeveridad()))
-                .collect(Collectors.toList());
-
-        List<EppDTO> eppsDTO = labor.getEpps().stream()
-                .map(e -> new EppDTO(e.getId(), e.getNombre(), e.getTipo()))
-                .collect(Collectors.toList());
-
-        return new LaborDetalleDTO(
-                labor.getId(),
-                labor.getNombre(),
-                riesgosDTO,
-                eppsDTO
-        );
-    }
-
-    // 10. GET /api/politicas-ambientales
-    public List<PoliticaAmbientalDTO> getPoliticasAmbientales() {
-        return politicaAmbientalRepository.findAll().stream()
-                .map(p -> new PoliticaAmbientalDTO(p.getId(), p.getTitulo(), p.getDescripcion()))
-                .collect(Collectors.toList());
+    private Obra findTrackedWork(String codigo) {
+        String candidate = codigo == null ? "" : codigo.substring(0, Math.min(codigo.length(), 128));
+        String codeHash = trackingCodeService.hash(candidate);
+        Optional<Obra> found = obraRepository.findByCodigoHashWithHitos(codeHash);
+        boolean codeMatches = trackingCodeService.matches(
+                candidate, found.map(Obra::getCodigoHash).orElse(DUMMY_TRACKING_HASH));
+        boolean legacyCode = found.map(Obra::isCodigoLegacy).orElse(false);
+        boolean secureFormat = !legacyCode && TRACKING_CODE_PATTERN.matcher(candidate).matches();
+        boolean legacyFormat = legacyCode && legacyTrackingCodesEnabled
+                && LEGACY_TRACKING_CODE_PATTERN.matcher(candidate).matches();
+        if (found.isEmpty() || (!secureFormat && !legacyFormat) || !codeMatches) {
+            throw new ResourceNotFoundException("No se encontró el proyecto solicitado.");
+        }
+        return found.get();
     }
 
     private String mapTipoServicioToNivelRiesgo(String tipoServicio) {
@@ -279,42 +232,6 @@ public class GygService {
             count++;
         }
         return count;
-    }
-
-    private String inferirCategoria(String nombreObra) {
-        if (nombreObra == null) {
-            return "CIVIL";
-        }
-        String nombre = nombreObra.toUpperCase(Locale.ROOT);
-        if (nombre.contains("SST") || nombre.contains("SEGURIDAD") || nombre.contains("SALUD") || nombre.contains("HSEQ")) {
-            return "SST";
-        }
-        return "CIVIL";
-    }
-
-    private String construirDescripcion(String nombreObra) {
-        if (nombreObra == null) {
-            return "Proyecto de infraestructura y consultoria con enfoque de seguridad, calidad y sostenibilidad.";
-        }
-        String categoria = inferirCategoria(nombreObra);
-        if ("SST".equals(categoria)) {
-            return "Programa de acompañamiento y fortalecimiento de seguridad y salud en el trabajo para la operación del proyecto.";
-        }
-        return "Proyecto de infraestructura y obra civil con control de calidad, planificación y ejecución técnica.";
-    }
-
-    private String construirMetricaDestacada(String nombreObra) {
-        if ("SST".equals(inferirCategoria(nombreObra))) {
-            return "Cumplimiento y prevención";
-        }
-        return "Ejecución y calidad";
-    }
-
-    private String construirImagen(String nombreObra) {
-        if ("SST".equals(inferirCategoria(nombreObra))) {
-            return "https://images.unsplash.com/photo-1581092921461-eab62e97a2d6?auto=format&fit=crop&w=900&q=80";
-        }
-        return "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=900&q=80";
     }
 
 }

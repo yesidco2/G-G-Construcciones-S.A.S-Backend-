@@ -1,8 +1,8 @@
 package com.gyg.backend.service;
 
-public class CaptchaProviderUnavailableException extends RuntimeException {
+public class CaptchaProviderUnavailableException extends CaptchaVerificationException {
 
     public CaptchaProviderUnavailableException() {
-        super("El proveedor CAPTCHA no está disponible.");
+        super(CaptchaFailureCode.CONFIGURATION_ERROR);
     }
 }

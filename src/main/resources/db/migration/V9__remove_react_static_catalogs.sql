@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS epps;
+DROP TABLE IF EXISTS riesgos;
+DROP TABLE IF EXISTS labores;
+DROP TABLE IF EXISTS politicas_ambientales;
+DROP TABLE IF EXISTS servicios;

@@ -1,19 +1,61 @@
 package com.gyg.backend.config;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.env.MockEnvironment;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 class CaptchaConfigurationTest {
 
     @Test
-    void shouldFailStartupForEnabledProductionCaptchaWithoutSecret() {
-        MockEnvironment environment = new MockEnvironment();
-        environment.setActiveProfiles("prod");
-
+    void shouldFailStartupWhenCaptchaIsEnabledWithoutSecret() {
         assertThrows(IllegalStateException.class, () -> new CaptchaConfiguration()
-                .validateCaptchaSettings(environment, true, "turnstile", "")
+            .validateCaptchaSettings(true, "turnstile", "", "app.example.com", "prod")
+                .afterPropertiesSet());
+    }
+
+    @Test
+    void shouldAllowDisabledCaptchaWithoutSecret() {
+        assertDoesNotThrow(() -> new CaptchaConfiguration()
+                .validateCaptchaSettings(false, "turnstile", "", "", "prod")
+                .afterPropertiesSet());
+    }
+
+    @Test
+    void shouldRejectLocalHostnamesInProduction() {
+        assertThrows(IllegalStateException.class, () -> new CaptchaConfiguration()
+                .validateCaptchaSettings(true, "turnstile", "secret", "app.example.com,localhost", "prod")
+                .afterPropertiesSet());
+    }
+
+    @Test
+    void shouldRejectKnownTurnstileTestSecretInProduction() {
+        assertThrows(IllegalStateException.class, () -> new CaptchaConfiguration()
+                .validateCaptchaSettings(
+                        true,
+                        "turnstile",
+                        "1x0000000000000000000000000000000AA",
+                        "app.example.com",
+                        "prod")
+                .afterPropertiesSet());
+    }
+
+    @Test
+    void shouldAllowTurnstileTestSecretInDevelopmentOnly() {
+        assertDoesNotThrow(() -> new CaptchaConfiguration()
+                .validateCaptchaSettings(
+                        true,
+                        "turnstile",
+                        "1x0000000000000000000000000000000AA",
+                        "localhost",
+                        "dev")
+                .afterPropertiesSet());
+    }
+
+    @Test
+    void shouldRequireExpectedHostnamesWhenTurnstileIsEnabled() {
+        assertThrows(IllegalStateException.class, () -> new CaptchaConfiguration()
+                .validateCaptchaSettings(true, "turnstile", "secret", "", "prod")
                 .afterPropertiesSet());
     }
 }

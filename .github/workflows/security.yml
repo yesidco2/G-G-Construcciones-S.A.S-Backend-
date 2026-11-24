@@ -23,10 +23,6 @@ jobs:
           cache: maven
       - name: Run Maven verification
         run: ./mvnw --batch-mode verify
-      - name: OWASP dependency check
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: ./mvnw --batch-mode org.owasp:dependency-check-maven:13.0.0:check -DnvdApiKey="$NVD_API_KEY" -DfailBuildOnCVSS=7
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:

@@ -9,21 +9,24 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
-import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
-import com.gyg.backend.service.CaptchaProviderUnavailableException;
-import com.gyg.backend.service.CaptchaService;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import com.gyg.backend.service.CaptchaFailureCode;
+import com.gyg.backend.service.CaptchaVerificationException;
+import com.gyg.backend.service.EmailDeliveryException;
+import com.gyg.backend.service.SecurityStateUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import jakarta.validation.ConstraintViolationException;
 
@@ -63,10 +66,16 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({ConstraintViolationException.class, MethodArgumentTypeMismatchException.class,
-            MissingServletRequestParameterException.class})
+            MissingServletRequestParameterException.class, MissingServletRequestPartException.class})
     public ResponseEntity<Map<String, Object>> handleInvalidParameter(Exception ex, WebRequest request) {
         return createErrorResponse(
                 HttpStatus.BAD_REQUEST, "Bad Request", "La solicitud contiene datos no válidos.", request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleUploadLimit(WebRequest request) {
+        return createErrorResponse(HttpStatus.PAYLOAD_TOO_LARGE, "Payload Too Large",
+                "La imagen supera el tamaño permitido.", request);
     }
 
     @ExceptionHandler(AccessDeniedException.class)
@@ -81,6 +90,7 @@ public class GlobalExceptionHandler {
         body.put("timestamp", LocalDateTime.now());
         body.put("status", HttpStatus.TOO_MANY_REQUESTS.value());
         body.put("error", "Too Many Requests");
+        body.put("code", "RATE_LIMITED");
         body.put("message", ex.getMessage());
         body.put("path", request.getDescription(false).replace("uri=", ""));
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
@@ -88,27 +98,53 @@ public class GlobalExceptionHandler {
                 .body(body);
     }
 
-    @ExceptionHandler(CaptchaService.InvalidCaptchaException.class)
-    public ResponseEntity<Map<String, Object>> handleInvalidCaptcha(
-            CaptchaService.InvalidCaptchaException ex,
+    @ExceptionHandler(CaptchaVerificationException.class)
+    public ResponseEntity<Map<String, Object>> handleCaptchaFailure(
+            CaptchaVerificationException ex,
             WebRequest request) {
+        CaptchaFailureCode code = ex.getFailureCode();
+        String message = code.httpStatus().is5xxServerError()
+                ? "La verificación CAPTCHA no está disponible. Intenta nuevamente más tarde."
+                : "La verificación CAPTCHA no fue válida. Solicita un nuevo intento.";
         return createErrorResponse(
-                HttpStatus.BAD_REQUEST, "Bad Request", "La verificación CAPTCHA no fue válida.", request);
+                code.httpStatus(), code.httpStatus().getReasonPhrase(), message, code.responseCode(), request);
     }
 
-    @ExceptionHandler(CaptchaProviderUnavailableException.class)
-    public ResponseEntity<Map<String, Object>> handleCaptchaUnavailable(
-            CaptchaProviderUnavailableException ex,
+    @ExceptionHandler(EmailDeliveryException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailDeliveryUnavailable(
+            EmailDeliveryException ex,
             WebRequest request) {
         return createErrorResponse(
-                HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
-                "No fue posible verificar CAPTCHA. Intenta nuevamente.", request);
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Service Unavailable",
+                "El servicio de correo no está disponible. Intenta nuevamente más tarde.",
+                "EMAIL_DELIVERY_UNAVAILABLE",
+                request);
+    }
+
+    @ExceptionHandler(SecurityStateUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleSecurityStateUnavailable(
+            SecurityStateUnavailableException ex,
+            WebRequest request) {
+        return createErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Service Unavailable",
+                "No fue posible verificar la sesión. Intenta nuevamente más tarde.",
+                "AUTH_SESSION_UNAVAILABLE",
+                request);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleUnreadableMessage(
             HttpMessageNotReadableException ex,
             WebRequest request) {
+        if (request.getDescription(false).contains("/api/contacto")) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "codigo", "CONTACTO_VALIDATION_ERROR",
+                    "mensaje", "La solicitud contiene campos inválidos.",
+                    "camposInvalidos", List.of(Map.of(
+                            "campo", "cuerpo", "motivo", "formato inválido"))));
+        }
         return createErrorResponse(
                 HttpStatus.BAD_REQUEST, "Bad Request", "El cuerpo de la solicitud no tiene un formato valido.", request);
     }
@@ -138,23 +174,6 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND, "Not Found", "No se encontro el recurso solicitado.", request);
     }
 
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<Map<String, Object>> handleUploadTooLarge(
-            MaxUploadSizeExceededException ex,
-            WebRequest request) {
-        return createErrorResponse(
-                HttpStatus.PAYLOAD_TOO_LARGE, "Payload Too Large",
-                "El archivo supera el tamaño permitido.", request);
-    }
-
-    @ExceptionHandler(MultipartException.class)
-    public ResponseEntity<Map<String, Object>> handleInvalidMultipart(
-            MultipartException ex,
-            WebRequest request) {
-        return createErrorResponse(
-                HttpStatus.BAD_REQUEST, "Bad Request", "El formulario de carga no es válido.", request);
-    }
-
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGlobalException(Exception ex, WebRequest request) {
         logger.error("Error interno no controlado al procesar la solicitud ({})", ex.getClass().getSimpleName());
@@ -168,10 +187,22 @@ public class GlobalExceptionHandler {
             String error,
             String message,
             WebRequest request) {
+        return createErrorResponse(status, error, message, null, request);
+    }
+
+    private ResponseEntity<Map<String, Object>> createErrorResponse(
+            HttpStatus status,
+            String error,
+            String message,
+            String code,
+            WebRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", status.value());
         body.put("error", error);
+        if (code != null) {
+            body.put("code", code);
+        }
         body.put("message", message);
         body.put("path", request instanceof ServletWebRequest servletWebRequest
                 ? servletWebRequest.getRequest().getRequestURI()

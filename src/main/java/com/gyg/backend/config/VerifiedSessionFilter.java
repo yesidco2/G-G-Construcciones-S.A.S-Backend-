@@ -1,6 +1,7 @@
 package com.gyg.backend.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gyg.backend.service.SecurityStateUnavailableException;
 import com.gyg.backend.service.VerifiedSessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -40,7 +41,21 @@ public class VerifiedSessionFilter extends OncePerRequestFilter {
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
-        if (!verifiedSessionService.isValid(VerifiedSessionService.firebaseToken(request))) {
+        boolean valid;
+        try {
+            valid = verifiedSessionService.isValid(VerifiedSessionService.identity(request));
+        } catch (SecurityStateUnavailableException exception) {
+            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setCharacterEncoding("UTF-8");
+            objectMapper.writeValue(response.getOutputStream(), Map.of(
+                    "status", HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                    "error", "Servicio no disponible",
+                    "code", "AUTH_SESSION_UNAVAILABLE",
+                    "message", "No fue posible verificar la sesión. Intenta nuevamente."));
+            return;
+        }
+        if (!valid) {
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.setCharacterEncoding("UTF-8");

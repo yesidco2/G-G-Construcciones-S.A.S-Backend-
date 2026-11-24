@@ -1,39 +1,34 @@
 package com.gyg.backend.service;
 
-import com.google.firebase.auth.FirebaseToken;
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.Instant;
-import java.util.Map;
+import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class VerifiedSessionServiceTest {
+    private final Instant now = Instant.parse("2026-01-01T00:00:00Z");
+    private final VerifiedSessionStore store = mock(VerifiedSessionStore.class);
+    private final VerifiedSessionService service = new VerifiedSessionService(store, Clock.fixed(now, ZoneOffset.UTC));
 
     @Test
-    void shouldValidateSessionOnlyForMatchingUidAndAuthTime() {
-        VerifiedSessionService sessions = new VerifiedSessionService();
-        FirebaseToken token = token("uid-1", 1_800_000_000L, 1_800_000_100L);
-        sessions.create(token);
-
-        assertTrue(sessions.isValid(token));
-        assertFalse(sessions.isValid(token("uid-2", 1_800_000_000L, 1_800_000_100L)));
-        assertFalse(sessions.isValid(token("uid-1", 1_800_000_001L, 1_800_000_100L)));
+    void bindsCaptchaToTheSupabaseSession() {
+        var expiration = now.plusSeconds(100);
+        var identity = new SupabaseAuth.Identity("uid", "user@example.com", true, "session", expiration);
+        assertEquals(expiration, service.create(identity));
+        verify(store).save("uid", "session", expiration.toEpochMilli(), now.toEpochMilli());
+        when(store.matches("uid", "session", now.toEpochMilli())).thenReturn(true);
+        assertTrue(service.isValid(identity));
+        assertFalse(service.isValid(new SupabaseAuth.Identity("uid", "user@example.com", true, "another", expiration)));
     }
 
     @Test
-    void shouldRejectExpiredFirebaseTokenWhenCreatingSession() {
-        VerifiedSessionService sessions = new VerifiedSessionService();
-        FirebaseToken token = token("uid-1", 1_800_000_000L, Instant.now().minusSeconds(1).getEpochSecond());
-
-        assertThrows(IllegalArgumentException.class, () -> sessions.create(token));
-    }
-
-    private static FirebaseToken token(String uid, long authTime, long expiration) {
-        FirebaseToken token = mock(FirebaseToken.class);
-        when(token.getUid()).thenReturn(uid);
-        when(token.getClaims()).thenReturn(Map.of("auth_time", authTime, "exp", expiration));
-        return token;
+    void rejectsExpiredTokens() {
+        var identity = new SupabaseAuth.Identity("uid", "user@example.com", true, "session", now);
+        assertThrows(IllegalArgumentException.class, () -> service.create(identity));
+        verifyNoInteractions(store);
     }
 }

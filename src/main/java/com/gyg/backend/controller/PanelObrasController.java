@@ -1,26 +1,23 @@
 package com.gyg.backend.controller;
 
 import com.gyg.backend.dto.panel.EstadoObraRequest;
+import com.gyg.backend.dto.panel.ClienteObraResponse;
 import com.gyg.backend.dto.panel.ObraRequest;
 import com.gyg.backend.dto.panel.ObraResponse;
+import com.gyg.backend.dto.panel.ObraUpdateRequest;
+import com.gyg.backend.dto.panel.EstadoObra;
 import com.gyg.backend.dto.panel.ProgresoObraRequest;
 import com.gyg.backend.model.Usuario;
 import com.gyg.backend.service.PanelObrasService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -37,6 +34,17 @@ public class PanelObrasController {
     @GetMapping
     public ResponseEntity<List<ObraResponse>> listar(@AuthenticationPrincipal Usuario actor) {
         return ResponseEntity.ok(panelObrasService.listar(actor));
+    }
+
+    @GetMapping("/clientes")
+    public ResponseEntity<List<ClienteObraResponse>> listarClientes(
+            @AuthenticationPrincipal Usuario actor) {
+        return ResponseEntity.ok(panelObrasService.listarClientes(actor));
+    }
+
+    @GetMapping("/estados")
+    public ResponseEntity<List<EstadoObra>> listarEstados() {
+        return ResponseEntity.ok(List.of(EstadoObra.values()));
     }
 
     @GetMapping("/{obraId}")
@@ -65,6 +73,16 @@ public class PanelObrasController {
                 panelObrasService.actualizar(obraId, request, actor, httpRequest.getRemoteAddr()));
     }
 
+    @PatchMapping("/{obraId}")
+    public ResponseEntity<ObraResponse> actualizarParcial(
+            @PathVariable @Positive Long obraId,
+            @Valid @RequestBody ObraUpdateRequest request,
+            @AuthenticationPrincipal Usuario actor,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(panelObrasService.actualizarParcial(
+                obraId, request, actor, httpRequest.getRemoteAddr()));
+    }
+
     @PatchMapping("/{obraId}/estado")
     public ResponseEntity<ObraResponse> cambiarEstado(
             @PathVariable @Positive Long obraId,
@@ -83,6 +101,15 @@ public class PanelObrasController {
             HttpServletRequest httpRequest) {
         return ResponseEntity.ok(
                 panelObrasService.cambiarProgreso(obraId, request, actor, httpRequest.getRemoteAddr()));
+    }
+
+    @PostMapping("/{obraId}/codigo-seguimiento")
+    public ResponseEntity<ObraResponse> regenerarCodigoSeguimiento(
+            @PathVariable @Positive Long obraId,
+            @AuthenticationPrincipal Usuario actor,
+            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(panelObrasService.regenerarCodigoSeguimiento(
+                obraId, actor, httpRequest.getRemoteAddr()));
     }
 
     @DeleteMapping("/{obraId}")
@@ -104,28 +131,4 @@ public class PanelObrasController {
                 panelObrasService.asignarIngeniero(obraId, usuarioId, actor, httpRequest.getRemoteAddr()));
     }
 
-    @PostMapping(path = "/{obraId}/fotos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ObraResponse> subirFoto(
-            @PathVariable @Positive Long obraId,
-            @RequestPart("archivo") MultipartFile archivo,
-            @AuthenticationPrincipal Usuario actor,
-            HttpServletRequest httpRequest) throws IOException {
-        return ResponseEntity.ok(
-                panelObrasService.subirFoto(obraId, archivo, actor, httpRequest.getRemoteAddr()));
-    }
-
-    @GetMapping("/{obraId}/fotos/{fotoId}")
-    public ResponseEntity<byte[]> obtenerFoto(
-            @PathVariable @Positive Long obraId,
-            @PathVariable @Positive Long fotoId,
-            @AuthenticationPrincipal Usuario actor) throws IOException {
-        PanelObrasService.StoredImage image = panelObrasService.obtenerFoto(obraId, fotoId, actor);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType(image.contentType()));
-        headers.setContentDisposition(ContentDisposition.inline()
-                .filename("foto-obra.png", StandardCharsets.UTF_8)
-                .build());
-        headers.set("X-Content-Type-Options", "nosniff");
-        return new ResponseEntity<>(image.content(), headers, HttpStatus.OK);
-    }
 }

@@ -12,11 +12,27 @@ import java.util.Optional;
 import com.gyg.backend.model.Rol;
 
 public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
-    Optional<Usuario> findByFirebaseUid(String firebaseUid);
+    Optional<Usuario> findByAutorizacionEmail(String email);
+
+    List<Usuario> findAllByAutorizacionEmailIsNotNullOrderByAutorizacionEmailAsc();
+
+    long countByAutorizacionActivaTrueAndRolAutorizado(Rol rol);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM Usuario u WHERE u.autorizacionEmail = :email")
+    Optional<Usuario> findAuthorizationForUpdate(@Param("email") String email);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM Usuario u WHERE u.rolAutorizado = :rol AND u.autorizacionActiva = true ORDER BY u.id")
+    List<Usuario> findActiveAuthorizationsForUpdate(@Param("rol") Rol rol);
+    Optional<Usuario> findBySupabaseUid(String supabaseUid);
 
     Optional<Usuario> findByEmailIgnoreCase(String email);
 
+    @Query("SELECT u FROM Usuario u WHERE u.supabaseUid IS NOT NULL ORDER BY u.email")
     List<Usuario> findAllByOrderByEmailAsc();
+
+    List<Usuario> findAllByRolAndActivoTrueOrderByNombreAsc(Rol rol);
 
     long countByRolAndActivoTrue(Rol rol);
 
