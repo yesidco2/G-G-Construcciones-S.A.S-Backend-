@@ -198,6 +198,22 @@ public class GygController {
         }
     }
 
+    @PostMapping("/obras/seguimiento/documentos/{id}")
+    public ResponseEntity<byte[]> getDocumento(
+            @PathVariable @Positive Long id, @Valid @RequestBody SeguimientoRequest request,
+            HttpServletRequest httpRequest) {
+        rateLimitSeguimiento(httpRequest);
+        try {
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .header("X-Content-Type-Options", "nosniff")
+                    .body(gygService.getDocumento(request.getCodigo(), id));
+        } catch (ResourceNotFoundException notFound) {
+            rateLimitSeguimientoFallido(httpRequest);
+            throw notFound;
+        }
+    }
+
     private void rateLimitSeguimientoFallido(HttpServletRequest request) {
         rateLimitService.check("seguimiento-fallido", request, seguimientoFailedPer15Min, Duration.ofMinutes(15),
                 "Demasiados intentos de seguimiento. Intenta más tarde.");

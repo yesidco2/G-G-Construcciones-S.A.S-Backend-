@@ -83,7 +83,8 @@ public class UsuarioService {
             Usuario usuario, String email, boolean emailVerificado, Map<String, Object> claims) {
         String normalizedEmail = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
         Object name = claims.get("name");
-        String nombre = name instanceof String value ? value : null;
+        String nombre = usuario.getNombre();
+        if (nombre == null && name instanceof String value) nombre = value;
 
         Rol assignedRole = usuario.getRol() == Rol.CLIENTE ? Rol.CLIENTE : null;
         Rol rol = emailVerificado && normalizedEmail != null

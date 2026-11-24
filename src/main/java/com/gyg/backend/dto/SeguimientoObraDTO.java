@@ -3,6 +3,11 @@ package com.gyg.backend.dto;
 import java.util.List;
 
 public class SeguimientoObraDTO {
+    private List<DocumentoDTO> documentos = List.of();
+
+    public List<DocumentoDTO> getDocumentos() { return documentos; }
+    public void setDocumentos(List<DocumentoDTO> documentos) { this.documentos = documentos; }
+
     private String nombre;
     private Integer porcentajeAvance;
     private List<SeguimientoHitoDTO> hitos;

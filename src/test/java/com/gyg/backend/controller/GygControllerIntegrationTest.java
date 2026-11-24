@@ -439,6 +439,29 @@ class GygControllerIntegrationTest {
         var created = objectMapper.readTree(result.getResponse().getContentAsString());
         long id = created.path("id").asLong();
         String original = created.path("codigoSeguimiento").asText();
+        byte[] pdf = "%PDF-1.4".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        var upload = new MockMultipartFile("archivo", "plano.pdf", "application/pdf", pdf);
+        String documentos = "/api/panel/obras/" + id + "/documentos";
+        mockMvc.perform(multipart(documentos).file(upload).with(principal)).andExpect(status().isOk());
+        mockMvc.perform(multipart(documentos).file(upload).with(principal)).andExpect(status().isOk());
+        var listado = mockMvc.perform(get(documentos).with(principal)).andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1))).andReturn();
+        long docId = objectMapper.readTree(listado.getResponse().getContentAsString()).get(0).path("id").asLong();
+        mockMvc.perform(get(documentos + "/" + docId).with(principal)).andExpect(content().bytes(pdf));
+        mockMvc.perform(post("/api/obras/seguimiento/documentos/" + docId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("codigo", original))))
+                .andExpect(status().isOk()).andExpect(content().bytes(pdf));
+        mockMvc.perform(multipart("/api/panel/perfil").param("nombre", "Ana Pérez").with(principal))
+                .andExpect(status().isOk());
+        org.junit.jupiter.api.Assertions.assertEquals("Ana Pérez", usuarioRepository.findById(engineer.getId()).orElseThrow().getNombre());
+        var photo = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB), "png", photo);
+        mockMvc.perform(multipart("/api/panel/perfil")
+                        .file(new MockMultipartFile("foto", "perfil.png", "image/png", photo.toByteArray())).with(principal))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/panel/perfil/foto").with(principal))
+                .andExpect(status().isOk()).andExpect(content().contentType(MediaType.IMAGE_PNG));
         var persisted = obraRepository.findById(id).orElseThrow();
         org.junit.jupiter.api.Assertions.assertNull(persisted.getClienteId());
         org.junit.jupiter.api.Assertions.assertTrue(persisted.estaAsignadaA(engineer.getId()));
@@ -458,13 +481,15 @@ class GygControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cliente").value("Cliente actualizado"))
                 .andExpect(jsonPath("$.codigoSeguimiento").value(original));
-        mockMvc.perform(trackingRequest(original)).andExpect(status().isOk());
+        mockMvc.perform(trackingRequest(original)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentos[0].nombre").value("plano.pdf"));
 
         Usuario other = new Usuario();
         other.setId(Long.MAX_VALUE);
         other.setRol(Rol.INGENIERO);
         var otherPrincipal = authentication(new UsernamePasswordAuthenticationToken(
                 other, null, List.of(new SimpleGrantedAuthority("ROLE_INGENIERO"))));
+        mockMvc.perform(get(documentos + "/" + docId).with(otherPrincipal)).andExpect(status().isForbidden());
         mockMvc.perform(post("/api/panel/obras/{id}/codigo-seguimiento", id).with(otherPrincipal))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/panel/obras/{id}", id).with(otherPrincipal))

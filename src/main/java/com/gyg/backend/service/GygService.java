@@ -37,6 +37,9 @@ public class GygService {
     private FotosObraService fotosObraService;
 
     @Autowired
+    private DocumentosObraService documentos;
+
+    @Autowired
     private SolicitudContactoRepository solicitudContactoRepository;
 
     @Autowired
@@ -196,11 +199,17 @@ public class GygService {
                           hito.fechaObjetivo(), hito.completado()))
                 .toList();
 
-        return new SeguimientoObraDTO(
+        SeguimientoObraDTO seguimiento = new SeguimientoObraDTO(
                   obra.getNombreObra(), obra.getPorcentajeAvance(), hitos,
                   obra.getFotos().stream().map(foto -> new FotoObraDTO(
                           foto.id(), foto.nombre(), "/api/obras/seguimiento/fotos/" + foto.id(),
                           foto.fecha(), foto.descripcion())).toList());
+        seguimiento.setDocumentos(documentos.listar(obra.getId()));
+        return seguimiento;
+    }
+
+    public byte[] getDocumento(String codigo, long id) {
+        return documentos.leer(findTrackedWork(codigo).getId(), id);
     }
 
     public byte[] getSeguimientoFoto(String codigo, Long fotoId) {

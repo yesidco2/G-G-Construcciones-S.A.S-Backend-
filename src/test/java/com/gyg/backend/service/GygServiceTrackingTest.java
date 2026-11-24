@@ -30,6 +30,7 @@ class GygServiceTrackingTest {
     @BeforeEach
     void setUp() {
         service = new GygService();
+        ReflectionTestUtils.setField(service, "documentos", org.mockito.Mockito.mock(DocumentosObraService.class));
         ReflectionTestUtils.setField(service, "obraRepository", obraRepository);
         ReflectionTestUtils.setField(service, "trackingCodeService", trackingCodeService);
         ReflectionTestUtils.setField(service, "legacyTrackingCodesEnabled", true);
@@ -39,6 +40,7 @@ class GygServiceTrackingTest {
     void shouldSupportLegacyCodesOnlyWhileCompatibilityIsEnabled() {
         String legacyCode = "LEGACY-" + java.util.UUID.randomUUID().toString().substring(0, 8);
         Obra obra = new Obra("Proyecto legado", "EN_PROGRESO", 1L, 50);
+        obra.setId(1L);
         obra.setCodigoHash("legacy-hash");
         obra.setCodigoLegacy(true);
         when(trackingCodeService.hash(legacyCode)).thenReturn("legacy-hash");
