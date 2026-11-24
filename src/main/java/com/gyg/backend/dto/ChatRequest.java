@@ -9,6 +9,8 @@ public class ChatRequest {
     @Size(max = 500, message = "La pregunta no puede superar 500 caracteres")
     private String pregunta;
 
+    private Boolean aceptaEnvioProveedor;
+
     public ChatRequest() {
     } 
     
@@ -22,5 +24,13 @@ public class ChatRequest {
 
     public void setPregunta(String pregunta) {
         this.pregunta = pregunta;
+    }
+
+    public Boolean getAceptaEnvioProveedor() {
+        return aceptaEnvioProveedor;
+    }
+
+    public void setAceptaEnvioProveedor(Boolean aceptaEnvioProveedor) {
+        this.aceptaEnvioProveedor = aceptaEnvioProveedor;
     }
 }

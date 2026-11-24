@@ -24,6 +24,15 @@ public class LogChat {
     @Column(nullable = false)
     private LocalDateTime fecha;
 
+    @Column(name = "acepta_envio_proveedor", nullable = false)
+    private boolean aceptaEnvioProveedor;
+
+    @Column(name = "version_politica", length = 50)
+    private String versionPolitica;
+
+    @Column(name = "fecha_consentimiento")
+    private LocalDateTime fechaConsentimiento;
+
     public Long getId() {
         return id;
     }
@@ -62,5 +71,29 @@ public class LogChat {
 
     public void setFecha(LocalDateTime fecha) {
         this.fecha = fecha;
+    }
+
+    public boolean isAceptaEnvioProveedor() {
+        return aceptaEnvioProveedor;
+    }
+
+    public void setAceptaEnvioProveedor(boolean aceptaEnvioProveedor) {
+        this.aceptaEnvioProveedor = aceptaEnvioProveedor;
+    }
+
+    public String getVersionPolitica() {
+        return versionPolitica;
+    }
+
+    public void setVersionPolitica(String versionPolitica) {
+        this.versionPolitica = versionPolitica;
+    }
+
+    public LocalDateTime getFechaConsentimiento() {
+        return fechaConsentimiento;
+    }
+
+    public void setFechaConsentimiento(LocalDateTime fechaConsentimiento) {
+        this.fechaConsentimiento = fechaConsentimiento;
     }
 }
