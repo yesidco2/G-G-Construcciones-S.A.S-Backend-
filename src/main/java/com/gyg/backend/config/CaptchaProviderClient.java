@@ -6,6 +6,7 @@ import com.gyg.backend.service.CaptchaFailureCode;
 import com.gyg.backend.service.CaptchaVerificationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
@@ -45,7 +46,7 @@ public class CaptchaProviderClient implements CaptchaVerificationClient {
     private final Set<String> expectedHostnames;
 
     public CaptchaProviderClient(
-            RestOperations restOperations,
+            @Qualifier("captchaRestOperations") RestOperations restOperations,
             @Value("${app.captcha.provider:turnstile}") String provider,
             @Value("${app.captcha.secret:}") String secret,
             @Value("${app.captcha.expected-hostnames:}") String expectedHostnames) {

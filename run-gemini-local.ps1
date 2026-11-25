@@ -41,7 +41,9 @@ foreach ($name in $configuredVariables) {
 try {
     $env:GEMINI_API_KEY = $apiKey
     $env:APP_CHAT_GEMINI_ENABLED = 'true'
-    $env:APP_CHAT_GEMINI_MODEL = 'gemini-3.6-flash'
+    if ([string]::IsNullOrWhiteSpace($env:APP_CHAT_GEMINI_MODEL)) {
+        $env:APP_CHAT_GEMINI_MODEL = 'gemini-3.5-flash-lite'
+    }
     $env:APP_PRIVACY_POLICY_VERSION = '1.1'
     $env:SPRING_PROFILES_ACTIVE = 'dev'
     $env:APP_CAPTCHA_ENABLED = 'false'

@@ -15,8 +15,8 @@ public class GeminiChatConfiguration {
     @ConditionalOnProperty(name = "app.chat.gemini.enabled", havingValue = "true")
     RestOperations geminiRestOperations(RestTemplateBuilder builder) {
         return builder
-                .setConnectTimeout(Duration.ofSeconds(3))
-                .setReadTimeout(Duration.ofSeconds(20))
+                .connectTimeout(Duration.ofSeconds(5))
+                .readTimeout(Duration.ofSeconds(50))
                 .build();
     }
 }

@@ -12,10 +12,13 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestOperations;
 
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 
 @Service
@@ -68,24 +71,42 @@ public class GeminiChatEngine implements ChatEngine {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("x-goog-api-key", apiKey);
 
-        Map<String, Object> requestBody = Map.of(
-                "systemInstruction", Map.of(
-                        "parts", List.of(Map.of("text", SYSTEM_INSTRUCTION))),
-                "contents", List.of(Map.of(
-                        "parts", List.of(Map.of("text", pregunta)))),
-                "generationConfig", Map.of(
-                        "temperature", 0.2,
-                        "maxOutputTokens", 700));
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
+        boolean reintentoDisponible = true;
         try {
-            ResponseEntity<JsonNode> response = restOperations.exchange(
-                    API_URL.formatted(model), HttpMethod.POST, entity, JsonNode.class);
-            String answer = extractAnswer(response.getBody());
-            if (answer.isBlank()) {
-                throw new ChatProviderUnavailableException();
+            for (int budget : new int[]{2048, 4096}) {
+                JsonNode candidate;
+                try {
+                    candidate = solicitar(pregunta, headers, budget);
+                } catch (HttpServerErrorException.ServiceUnavailable ex) {
+                    if (!reintentoDisponible || (ex.getResponseHeaders() != null
+                            && ex.getResponseHeaders().containsKey(HttpHeaders.RETRY_AFTER))) {
+                        throw ex;
+                    }
+                    reintentoDisponible = false;
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new ChatProviderUnavailableException();
+                    }
+                    candidate = solicitar(pregunta, headers, budget);
+                }
+                String finish = candidate.path("finishReason").asText();
+                if ("MAX_TOKENS".equals(finish)) continue;
+                if ("STOP".equals(finish)) {
+                    String answer = extractAnswer(candidate);
+                    if (answer.length() > 4000) continue;
+                    if (!answer.isBlank()) return answer;
+                }
+                break;
             }
-            return answer;
+            throw new ChatProviderUnavailableException();
+        } catch (ResourceAccessException exception) {
+            logger.warn("Falló la comunicación HTTPS con Gemini ({}; causa raíz: {})",
+                    exception.getCause() == null ? exception.getClass().getSimpleName()
+                            : exception.getCause().getClass().getSimpleName(),
+                    exception.getMostSpecificCause().getClass().getSimpleName());
+            throw new ChatProviderUnavailableException();
         } catch (RestClientException exception) {
             logger.warn("No se pudo completar la solicitud al proveedor de chat ({})",
                     exception.getClass().getSimpleName());
@@ -93,11 +114,32 @@ public class GeminiChatEngine implements ChatEngine {
         }
     }
 
-    private String extractAnswer(JsonNode response) {
-        JsonNode parts = response == null
-                ? null
-                : response.path("candidates").path(0).path("content").path("parts");
-        if (parts == null || !parts.isArray()) {
+    private JsonNode solicitar(String pregunta, HttpHeaders headers, int budget) {
+        String instruccion = budget == 4096 ? SYSTEM_INSTRUCTION
+                + " Resume los puntos esenciales en un máximo de 100 palabras y termina la respuesta." : SYSTEM_INSTRUCTION;
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("temperature", 0.2);
+        generationConfig.put("maxOutputTokens", budget);
+        if ("gemini-3.6-flash".equals(model)) {
+            generationConfig.put("thinkingConfig", Map.of("thinkingLevel", "LOW"));
+        }
+        Map<String, Object> requestBody = Map.of(
+                "systemInstruction", Map.of(
+                        "parts", List.of(Map.of("text", instruccion))),
+                "contents", List.of(Map.of(
+                        "parts", List.of(Map.of("text", pregunta)))),
+                "generationConfig", generationConfig);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+        ResponseEntity<JsonNode> response = restOperations.exchange(
+                API_URL.formatted(model), HttpMethod.POST, entity, JsonNode.class);
+        return response.hasBody() ? response.getBody().path("candidates").path(0)
+                : com.fasterxml.jackson.databind.node.MissingNode.getInstance();
+    }
+
+    private String extractAnswer(JsonNode candidate) {
+        JsonNode parts = candidate.path("content").path("parts");
+        if (!parts.isArray()) {
             return "";
         }
 
